@@ -1,0 +1,9 @@
+{
+  "name": "Spain Helper AI",
+  "short_name": "Spain Helper",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f0",
+  "theme_color": "#176b62",
+  "lang": "ru"
+}

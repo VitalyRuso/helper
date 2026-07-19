@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KnowledgeSourceInput",
+  "type": "object",
+  "required": ["title", "source_type", "trust_level"],
+  "properties": {
+    "title": { "type": "string" },
+    "source_type": { "enum": ["file", "url", "pasted_text", "manual_note"] },
+    "original_path": { "type": ["string", "null"] },
+    "source_url": { "type": ["string", "null"] },
+    "raw_text": { "type": ["string", "null"] },
+    "trust_level": { "enum": ["official", "semi_official", "user_provided", "unknown"] }
+  }
+}

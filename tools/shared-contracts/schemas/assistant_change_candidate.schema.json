@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AssistantChangeCandidate",
+  "type": "object",
+  "required": ["id", "assistant_profile_id", "candidate_type", "title", "description", "proposed_payload_json", "reason", "risk_level", "status"],
+  "properties": {
+    "id": { "type": "string" },
+    "assistant_profile_id": { "type": "string" },
+    "candidate_type": { "enum": ["prompt_change", "policy_change", "tool_change", "answer_format_change", "data_source_change", "architecture_note"] },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "proposed_payload_json": {},
+    "reason": { "type": "string" },
+    "risk_level": { "enum": ["low", "medium", "high"] },
+    "status": { "enum": ["draft", "approved", "rejected"] }
+  }
+}

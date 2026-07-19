@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AssistantProfile",
+  "type": "object",
+  "required": ["id", "name", "slug", "description", "is_active"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "description": { "type": "string" },
+    "active_prompt_version_id": { "type": ["string", "null"] },
+    "active_policy_version_id": { "type": ["string", "null"] },
+    "is_active": { "type": "boolean" }
+  }
+}

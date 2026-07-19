@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContentCandidate",
+  "type": "object",
+  "required": ["candidate_type", "title_ru", "summary_ru", "body_ru_markdown", "risk_level", "status"],
+  "properties": {
+    "candidate_type": { "enum": ["article", "guide", "checklist"] },
+    "title_ru": { "type": "string" },
+    "summary_ru": { "type": "string" },
+    "body_ru_markdown": { "type": "string" },
+    "category_slug": { "type": ["string", "null"] },
+    "risk_level": { "enum": ["low", "medium", "high"] },
+    "status": { "const": "draft" }
+  }
+}

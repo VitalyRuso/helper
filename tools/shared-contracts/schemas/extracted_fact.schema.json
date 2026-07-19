@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExtractedFact",
+  "type": "object",
+  "required": ["fact_type", "title_ru", "text_ru", "original_text", "confidence"],
+  "properties": {
+    "fact_type": { "enum": ["requirement", "deadline", "fee", "document", "procedure_step", "warning", "definition", "contact", "source_reference", "unknown"] },
+    "title_ru": { "type": "string" },
+    "text_ru": { "type": "string" },
+    "original_text": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "source_location": { "type": ["string", "null"] }
+  }
+}

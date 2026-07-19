@@ -1,0 +1,9 @@
+{
+  "name": "knowledge-intake-tool",
+  "version": "0.1.0",
+  "description": "Reusable deterministic intake tool that turns source data into reviewable knowledge candidates.",
+  "inputs": ["file", "url_metadata", "pasted_text", "manual_note"],
+  "outputs": ["extracted_facts", "content_candidate", "analysis_json"],
+  "commands": ["analyze", "analyze-file", "scan-docs"],
+  "reusable": true
+}

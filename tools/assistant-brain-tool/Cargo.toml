@@ -1,0 +1,16 @@
+[package]
+name = "assistant-brain-tool"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "assistant_brain_tool"
+path = "src/lib.rs"
+
+[[bin]]
+name = "assistant-brain-tool"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+shared-contracts = { path = "../shared-contracts" }

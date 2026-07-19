@@ -1,0 +1,9 @@
+{
+  "name": "assistant-brain-tool",
+  "version": "0.1.0",
+  "description": "Reusable assistant brain/configuration management tool with review-first changes.",
+  "inputs": ["assistant_profile", "prompt", "policy", "change_candidate", "test_run"],
+  "outputs": ["runtime_config", "review_status", "version_records"],
+  "commands": ["profile create", "prompt validate", "candidate create", "candidate review", "runtime-config"],
+  "reusable": true
+}
