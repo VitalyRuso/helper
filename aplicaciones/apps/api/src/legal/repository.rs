@@ -441,3 +441,153 @@ pub async fn insert_review_task(
     .fetch_one(pool)
     .await
 }
+
+pub async fn approve_review_task(
+    pool: &PgPool,
+    task_id: Uuid,
+    reviewed_by: Option<&str>,
+    reviewer_note: Option<&str>,
+) -> Result<ReviewTask, sqlx::Error> {
+    let task = sqlx::query_as::<_, ReviewTask>(
+        r#"
+        SELECT
+          id,
+          legal_change_id,
+          document_id,
+          task_type,
+          title,
+          status,
+          priority,
+          ai_summary,
+          reviewer_note,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at
+        FROM review_tasks
+        WHERE id = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(task_id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE legal_changes
+        SET status = 'approved',
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(task.legal_change_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query_as::<_, ReviewTask>(
+        r#"
+        UPDATE review_tasks
+        SET status = 'approved',
+            reviewed_by = COALESCE($2, reviewed_by),
+            reviewer_note = COALESCE($3, reviewer_note),
+            reviewed_at = now(),
+            updated_at = now()
+        WHERE id = $1
+        RETURNING
+          id,
+          legal_change_id,
+          document_id,
+          task_type,
+          title,
+          status,
+          priority,
+          ai_summary,
+          reviewer_note,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at
+        "#,
+    )
+    .bind(task_id)
+    .bind(reviewed_by)
+    .bind(reviewer_note)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn reject_review_task(
+    pool: &PgPool,
+    task_id: Uuid,
+    reviewed_by: Option<&str>,
+    reviewer_note: Option<&str>,
+) -> Result<ReviewTask, sqlx::Error> {
+    let task = sqlx::query_as::<_, ReviewTask>(
+        r#"
+        SELECT
+          id,
+          legal_change_id,
+          document_id,
+          task_type,
+          title,
+          status,
+          priority,
+          ai_summary,
+          reviewer_note,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at
+        FROM review_tasks
+        WHERE id = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(task_id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE legal_changes
+        SET status = 'rejected',
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(task.legal_change_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query_as::<_, ReviewTask>(
+        r#"
+        UPDATE review_tasks
+        SET status = 'rejected',
+            reviewed_by = COALESCE($2, reviewed_by),
+            reviewer_note = COALESCE($3, reviewer_note),
+            reviewed_at = now(),
+            updated_at = now()
+        WHERE id = $1
+        RETURNING
+          id,
+          legal_change_id,
+          document_id,
+          task_type,
+          title,
+          status,
+          priority,
+          ai_summary,
+          reviewer_note,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at
+        "#,
+    )
+    .bind(task_id)
+    .bind(reviewed_by)
+    .bind(reviewer_note)
+    .fetch_one(pool)
+    .await
+}
