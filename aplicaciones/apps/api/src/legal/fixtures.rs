@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use super::{
-    diff::{diff_sections, SectionSnapshot, VersionDiffResult},
+    diff::{diff_sections, SectionChangeType, SectionSnapshot, VersionDiffResult},
     models::ReviewTask,
     repository,
 };
@@ -180,7 +180,11 @@ pub async fn run_fixture_ingestion(pool: &PgPool) -> Result<FixtureIngestionResu
     )
     .await?;
 
-    let affected_sections = json!(diff.changes);
+    let affected_sections = json!(diff
+        .changes
+        .iter()
+        .filter(|change| change.change_type != SectionChangeType::Unchanged)
+        .collect::<Vec<_>>());
 
     let legal_change = repository::insert_legal_change(
         pool,

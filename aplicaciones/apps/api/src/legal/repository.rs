@@ -7,6 +7,13 @@ use super::models::{
     ReviewTask,
 };
 
+pub use super::retrieval::{
+    get_legal_change_context, get_legal_document, get_review_task_context, list_approved_knowledge,
+    list_current_document_sections, list_document_versions, list_knowledge_items,
+    search_approved_knowledge,
+};
+pub use super::review::{approve_review_task, reject_review_task};
+
 pub async fn list_legal_sources(pool: &PgPool) -> Result<Vec<LegalSource>, sqlx::Error> {
     sqlx::query_as::<_, LegalSource>(
         r#"
@@ -141,7 +148,7 @@ pub async fn upsert_fixture_document(
           $1,
           'FIXTURE-EXTRANJERIA-001',
           NULL,
-          'Fixture immigration instruction',
+          'Instrucción de extranjería de prueba',
           'instruction',
           'immigration',
           'fixture_extranjeria',
@@ -208,7 +215,15 @@ pub async fn insert_document_version(
     content_hash: &str,
     is_current: bool,
 ) -> Result<DocumentVersion, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
     if is_current {
+        // ponytail: serializes app writers; add a partial unique index if versions get external writers.
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM legal_documents WHERE id = $1 FOR UPDATE")
+            .bind(document_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
         sqlx::query(
             r#"
             UPDATE document_versions
@@ -217,11 +232,11 @@ pub async fn insert_document_version(
             "#,
         )
         .bind(document_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
 
-    sqlx::query_as::<_, DocumentVersion>(
+    let version = sqlx::query_as::<_, DocumentVersion>(
         r#"
         INSERT INTO document_versions (
           document_id,
@@ -256,8 +271,11 @@ pub async fn insert_document_version(
     .bind(normalized_text)
     .bind(content_hash)
     .bind(is_current)
-    .fetch_one(pool)
-    .await
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(version)
 }
 
 pub async fn insert_document_section(
@@ -438,156 +456,6 @@ pub async fn insert_review_task(
     .bind(title)
     .bind(priority)
     .bind(ai_summary)
-    .fetch_one(pool)
-    .await
-}
-
-pub async fn approve_review_task(
-    pool: &PgPool,
-    task_id: Uuid,
-    reviewed_by: Option<&str>,
-    reviewer_note: Option<&str>,
-) -> Result<ReviewTask, sqlx::Error> {
-    let task = sqlx::query_as::<_, ReviewTask>(
-        r#"
-        SELECT
-          id,
-          legal_change_id,
-          document_id,
-          task_type,
-          title,
-          status,
-          priority,
-          ai_summary,
-          reviewer_note,
-          reviewed_by,
-          reviewed_at,
-          created_at,
-          updated_at
-        FROM review_tasks
-        WHERE id = $1
-        LIMIT 1
-        "#,
-    )
-    .bind(task_id)
-    .fetch_one(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        UPDATE legal_changes
-        SET status = 'approved',
-            updated_at = now()
-        WHERE id = $1
-        "#,
-    )
-    .bind(task.legal_change_id)
-    .execute(pool)
-    .await?;
-
-    sqlx::query_as::<_, ReviewTask>(
-        r#"
-        UPDATE review_tasks
-        SET status = 'approved',
-            reviewed_by = COALESCE($2, reviewed_by),
-            reviewer_note = COALESCE($3, reviewer_note),
-            reviewed_at = now(),
-            updated_at = now()
-        WHERE id = $1
-        RETURNING
-          id,
-          legal_change_id,
-          document_id,
-          task_type,
-          title,
-          status,
-          priority,
-          ai_summary,
-          reviewer_note,
-          reviewed_by,
-          reviewed_at,
-          created_at,
-          updated_at
-        "#,
-    )
-    .bind(task_id)
-    .bind(reviewed_by)
-    .bind(reviewer_note)
-    .fetch_one(pool)
-    .await
-}
-
-pub async fn reject_review_task(
-    pool: &PgPool,
-    task_id: Uuid,
-    reviewed_by: Option<&str>,
-    reviewer_note: Option<&str>,
-) -> Result<ReviewTask, sqlx::Error> {
-    let task = sqlx::query_as::<_, ReviewTask>(
-        r#"
-        SELECT
-          id,
-          legal_change_id,
-          document_id,
-          task_type,
-          title,
-          status,
-          priority,
-          ai_summary,
-          reviewer_note,
-          reviewed_by,
-          reviewed_at,
-          created_at,
-          updated_at
-        FROM review_tasks
-        WHERE id = $1
-        LIMIT 1
-        "#,
-    )
-    .bind(task_id)
-    .fetch_one(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        UPDATE legal_changes
-        SET status = 'rejected',
-            updated_at = now()
-        WHERE id = $1
-        "#,
-    )
-    .bind(task.legal_change_id)
-    .execute(pool)
-    .await?;
-
-    sqlx::query_as::<_, ReviewTask>(
-        r#"
-        UPDATE review_tasks
-        SET status = 'rejected',
-            reviewed_by = COALESCE($2, reviewed_by),
-            reviewer_note = COALESCE($3, reviewer_note),
-            reviewed_at = now(),
-            updated_at = now()
-        WHERE id = $1
-        RETURNING
-          id,
-          legal_change_id,
-          document_id,
-          task_type,
-          title,
-          status,
-          priority,
-          ai_summary,
-          reviewer_note,
-          reviewed_by,
-          reviewed_at,
-          created_at,
-          updated_at
-        "#,
-    )
-    .bind(task_id)
-    .bind(reviewed_by)
-    .bind(reviewer_note)
     .fetch_one(pool)
     .await
 }

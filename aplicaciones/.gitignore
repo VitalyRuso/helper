@@ -4,3 +4,6 @@ dist/
 .env
 .DS_Store
 *.log
+build/
+postgres_data/
+qdrant_data/

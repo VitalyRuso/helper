@@ -133,3 +133,67 @@ pub struct ReviewTask {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct KnowledgeItem {
+    pub id: Uuid,
+    pub procedure_key: String,
+    pub topic_key: String,
+    pub title_es: String,
+    pub canonical_answer_es: String,
+    pub summary_ru: String,
+    pub summary_en: String,
+    pub conditions_json: Value,
+    pub required_evidence_json: Value,
+    pub source_refs_json: Value,
+    pub review_task_id: Option<Uuid>,
+    pub status: String,
+    pub effective_from: Option<NaiveDate>,
+    pub effective_until: Option<NaiveDate>,
+    pub approved_by: Option<String>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct KnowledgeItemView {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub item: KnowledgeItem,
+    pub document_id: Option<Uuid>,
+    pub reviewed_version_id: Option<Uuid>,
+    pub current_version_id: Option<Uuid>,
+    pub reviewed_version_is_current: bool,
+    pub is_stale: bool,
+    pub legal_status: Option<String>,
+    pub legal_area: Option<String>,
+    pub document_title: Option<String>,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentCurrentness {
+    pub reviewed_version_id: Uuid,
+    pub current_version_id: Option<Uuid>,
+    pub reviewed_version_is_current: bool,
+    pub is_stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewContext {
+    pub task: Option<ReviewTask>,
+    pub legal_change: LegalChange,
+    pub document: LegalDocument,
+    pub source: LegalSource,
+    pub diff: DocumentDiff,
+    pub affected_sections: Vec<DocumentSection>,
+    pub versions: Vec<DocumentVersion>,
+    pub currentness: DocumentCurrentness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewDecisionResult {
+    pub task: ReviewTask,
+    pub knowledge_item: Option<KnowledgeItem>,
+}
