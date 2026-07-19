@@ -5,6 +5,7 @@ pub mod access;
 pub mod admin;
 pub mod admin_assistant;
 pub mod admin_knowledge;
+pub mod admin_legal;
 pub mod articles;
 pub mod categories;
 pub mod chat;
@@ -16,7 +17,7 @@ pub mod search;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .merge(health::router())
+        .nest("/api/admin/legal", admin_legal::router())
         .nest("/api/categories", categories::router())
         .nest("/api/articles", articles::router())
         .nest("/api/guides", guides::router())
