@@ -20,6 +20,7 @@ import { GuideDetailPage } from "../pages/GuideDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { KbPage } from "../pages/KbPage";
 import { LegalPage } from "../pages/LegalPage";
+import { LegalReviewPage } from "../pages/LegalReviewPage";
 import { PricingPage } from "../pages/PricingPage";
 import { SearchPage } from "../pages/SearchPage";
 import { ArticlePage } from "../pages/ArticlePage";
@@ -40,6 +41,7 @@ export function App() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/legal" element={<LegalPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/legal" element={<LegalReviewPage />} />
         <Route path="/admin/knowledge" element={<AdminKnowledgePage />} />
         <Route path="/admin/knowledge/sources" element={<AdminKnowledgeSourcesPage />} />
         <Route path="/admin/knowledge/candidates" element={<AdminKnowledgeCandidatesPage />} />

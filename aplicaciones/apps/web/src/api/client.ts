@@ -5,6 +5,9 @@ import type {
   AdminKnowledgeCandidate,
   AdminKnowledgeCandidateDetails,
   AdminKnowledgeSource,
+  AdminLegalKnowledgeItem,
+  AdminLegalReviewContext,
+  AdminLegalReviewTask,
   Article,
   Category,
   ChatResponse,
@@ -68,6 +71,41 @@ export const api = {
       rag_vectors: number;
     }>("/api/admin/stats", {
       headers: { authorization: `Bearer ${token}` },
+    }),
+  adminLegalReviewTasks: (token: string) =>
+    request<{ items: AdminLegalReviewTask[] }>("/api/admin/legal/review-tasks", {
+      headers: auth(token),
+    }),
+  adminLegalReviewTask: (token: string, id: string) =>
+    request<AdminLegalReviewContext>(`/api/admin/legal/review-tasks/${id}`, {
+      headers: auth(token),
+    }),
+  adminLegalKnowledge: (token: string) =>
+    request<{ items: AdminLegalKnowledgeItem[] }>("/api/admin/legal/knowledge", {
+      headers: auth(token),
+    }),
+  adminLegalApproveTask: (token: string, id: string, note: string) =>
+    request<{ task: AdminLegalReviewTask; knowledge_item: unknown }>(
+      `/api/admin/legal/review-tasks/${id}/approve`,
+      {
+        method: "POST",
+        headers: auth(token),
+        body: JSON.stringify({ reviewer: "dev", note }),
+      },
+    ),
+  adminLegalRejectTask: (token: string, id: string, note: string) =>
+    request<{ task: AdminLegalReviewTask; knowledge_item: null }>(
+      `/api/admin/legal/review-tasks/${id}/reject`,
+      {
+        method: "POST",
+        headers: auth(token),
+        body: JSON.stringify({ reviewer: "dev", note }),
+      },
+    ),
+  adminLegalRunFixture: (token: string) =>
+    request<{ result: { review_task: AdminLegalReviewTask } }>("/api/admin/legal/fixtures/run", {
+      method: "POST",
+      headers: auth(token),
     }),
   ragStatus: () =>
     request<{

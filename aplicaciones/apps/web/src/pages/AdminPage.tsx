@@ -60,7 +60,11 @@ export function AdminPage() {
         {reindex.data && <p className="mt-3 text-sm text-brand">Файлов: {reindex.data.files}, чанков: {reindex.data.chunks}</p>}
         {reindex.error && <div className="mt-3"><ErrorState error={reindex.error} /></div>}
       </div>
-      <div className="mt-6 grid gap-3 md:grid-cols-2">
+      <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <Link className="rounded-md border border-ink/10 bg-white p-5 hover:border-brand/40" to="/admin/legal">
+          <h2 className="text-xl font-semibold">Legal Review</h2>
+          <p className="mt-2 text-sm text-ink/65">Review legal changes and approved knowledge.</p>
+        </Link>
         <Link className="rounded-md border border-ink/10 bg-white p-5 hover:border-brand/40" to="/admin/knowledge">
           <h2 className="text-xl font-semibold">Knowledge intake</h2>
           <p className="mt-2 text-sm text-ink/65">Sources, facts, and draft candidates.</p>

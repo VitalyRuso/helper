@@ -23,6 +23,7 @@ function NeedLogin() {
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   const links = [
+    ["/admin/legal", "Legal Review"],
     ["/admin/knowledge", "Knowledge"],
     ["/admin/knowledge/sources", "Sources"],
     ["/admin/knowledge/candidates", "Candidates"],
@@ -46,16 +47,16 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Guard({ title, children }: { title: string; children: React.ReactNode }) {
+export function Guard({ title, children }: { title: string; children: React.ReactNode }) {
   if (!token()) return <NeedLogin />;
   return <Shell title={title}>{children}</Shell>;
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
+export function Badge({ children }: { children: React.ReactNode }) {
   return <span className="rounded-md border border-ink/10 bg-white px-2 py-1 text-xs text-ink/65">{children}</span>;
 }
 
-function ActionButton({
+export function ActionButton({
   children,
   onClick,
   disabled,
@@ -429,7 +430,7 @@ function ProfileCard({ profile }: { profile: AdminAssistantProfile }) {
   );
 }
 
-function ListState({ loading, error, empty }: { loading: boolean; error: unknown; empty: boolean }) {
+export function ListState({ loading, error, empty }: { loading: boolean; error: unknown; empty: boolean }) {
   if (loading) return <div className="mt-4"><LoadingState /></div>;
   if (error) return <div className="mt-4"><ErrorState error={error} /></div>;
   if (empty) return <div className="mt-4"><EmptyState label="No records" /></div>;
