@@ -8,12 +8,15 @@ pub fn hash_key(key: &str) -> String {
 }
 
 pub async fn seed_access_key_hashes(pool: &PgPool, keys: &[String]) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE access_keys SET is_active = false WHERE label = 'env'")
+        .execute(pool)
+        .await?;
     for key in keys {
         sqlx::query(
             r#"
             INSERT INTO access_keys (key_hash, label)
             VALUES ($1, 'env')
-            ON CONFLICT (key_hash) DO NOTHING
+            ON CONFLICT (key_hash) DO UPDATE SET is_active = true, label = 'env'
             "#,
         )
         .bind(hash_key(key))

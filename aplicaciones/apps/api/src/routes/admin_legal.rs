@@ -1,6 +1,7 @@
 use axum::{
     body::Bytes,
     extract::{Path, State},
+    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
@@ -11,6 +12,7 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     legal::{fixtures, repository},
+    security,
     state::AppState,
 };
 
@@ -35,7 +37,11 @@ pub fn router() -> Router<AppState> {
         .route("/fixtures/run", post(run_fixture_ingestion))
 }
 
-async fn list_sources(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+async fn list_sources(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let sources = repository::list_legal_sources(&state.db).await?;
 
     Ok(Json(json!({
@@ -43,7 +49,11 @@ async fn list_sources(State(state): State<AppState>) -> AppResult<Json<serde_jso
     })))
 }
 
-async fn list_review_tasks(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+async fn list_review_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let tasks = repository::list_pending_review_tasks(&state.db).await?;
 
     Ok(Json(json!({
@@ -53,24 +63,30 @@ async fn list_review_tasks(State(state): State<AppState>) -> AppResult<Json<serd
 
 async fn get_review_task(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(task_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let context = repository::get_review_task_context(&state.db, task_id).await?;
     Ok(Json(json!(context)))
 }
 
 async fn get_legal_change(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(change_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let context = repository::get_legal_change_context(&state.db, change_id).await?;
     Ok(Json(json!(context)))
 }
 
 async fn list_document_versions(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(document_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let document = repository::get_legal_document(&state.db, document_id).await?;
     let versions = repository::list_document_versions(&state.db, document_id).await?;
     let current_version_ids = versions
@@ -90,8 +106,10 @@ async fn list_document_versions(
 
 async fn list_document_sections(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(document_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let document = repository::get_legal_document(&state.db, document_id).await?;
     let versions = repository::list_document_versions(&state.db, document_id).await?;
     let current_versions = versions
@@ -109,16 +127,22 @@ async fn list_document_sections(
     })))
 }
 
-async fn list_knowledge_items(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+async fn list_knowledge_items(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let items = repository::list_knowledge_items(&state.db).await?;
     Ok(Json(json!({ "items": items })))
 }
 
 async fn approve_review_task(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(task_id): Path<Uuid>,
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let payload = parse_review_decision(&body)?;
     let reviewer = payload
         .reviewer
@@ -136,9 +160,11 @@ async fn approve_review_task(
 
 async fn reject_review_task(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(task_id): Path<Uuid>,
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let payload = parse_review_decision(&body)?;
     let reviewer = payload
         .reviewer
@@ -183,7 +209,9 @@ mod tests {
 
 async fn run_fixture_ingestion(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> AppResult<Json<serde_json::Value>> {
+    security::require_admin(&headers, &state)?;
     let result = fixtures::run_fixture_ingestion(&state.db).await?;
 
     Ok(Json(json!({

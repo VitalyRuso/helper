@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "../components/layout/AppLayout";
 import { AboutPage } from "../pages/AboutPage";
 import { AdminPage } from "../pages/AdminPage";
@@ -51,6 +51,7 @@ export function App() {
         <Route path="/admin/assistant/candidates" element={<AdminAssistantCandidatesPage />} />
         <Route path="/admin/assistant/candidates/:id" element={<AdminAssistantCandidateDetailPage />} />
         <Route path="/admin/assistant/notes" element={<AdminAssistantNotesPage />} />
+        <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </AppLayout>
   );

@@ -385,7 +385,14 @@ async fn query_knowledge_items(
           reviewed_version.legal_status,
           d.legal_area,
           d.title AS document_title,
-          COALESCE(reviewed_version.source_url, d.source_url) AS source_url
+          COALESCE(reviewed_version.source_url, d.source_url) AS source_url,
+          source.authority,
+          d.official_id,
+          d.eli_id,
+          reviewed_version.version_label,
+          reviewed_version.version_date,
+          reviewed_version.retrieved_at,
+          d.last_checked_at
         FROM knowledge_items k
         LEFT JOIN review_tasks task ON task.id = k.review_task_id
         LEFT JOIN legal_changes change ON change.id = task.legal_change_id

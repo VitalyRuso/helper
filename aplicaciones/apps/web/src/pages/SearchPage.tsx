@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/ui/State";
 export function SearchPage() {
   const [input, setInput] = useState("");
   const [q, setQ] = useState("");
-  const results = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: q.length > 1 });
+  const results = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: Boolean(q) });
   function submit(event: FormEvent) {
     event.preventDefault();
     setQ(input.trim());

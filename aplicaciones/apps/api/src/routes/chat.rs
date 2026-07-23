@@ -1,5 +1,6 @@
 use crate::{
     error::{AppError, AppResult},
+    legal::answer::LegalMetadata,
     rag::agent,
     services::{access_key_service, session_service},
     state::AppState,
@@ -21,6 +22,8 @@ pub struct ChatRequest {
 pub struct ChatResponse {
     pub answer: String,
     pub sources: Vec<agent::Citation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legal: Option<LegalMetadata>,
     pub remaining_guest_questions: i32,
     pub unlocked: bool,
 }
@@ -70,6 +73,7 @@ async fn chat(
             return Ok(Json(ChatResponse {
                 answer: "Ключ принят. Доступ открыт.".to_owned(),
                 sources: vec![],
+                legal: None,
                 remaining_guest_questions: state.config.guest_question_limit,
                 unlocked: true,
             }));
@@ -86,6 +90,13 @@ async fn chat(
     let answer = agent::answer(&state, message, req.page_context.as_deref()).await?;
     session_service::increment_questions(&state.db, &req.session_id).await?;
 
+    let stored_sources = answer
+        .legal
+        .as_ref()
+        .map(|legal| serde_json::to_value(&legal.sources))
+        .unwrap_or_else(|| serde_json::to_value(&answer.sources))
+        .unwrap_or_else(|_| serde_json::json!([]));
+
     sqlx::query("INSERT INTO chat_messages (session_id, role, content, sources) VALUES ($1, 'user', $2, '[]')")
         .bind(&req.session_id)
         .bind(message)
@@ -94,7 +105,7 @@ async fn chat(
     sqlx::query("INSERT INTO chat_messages (session_id, role, content, sources) VALUES ($1, 'assistant', $2, $3)")
         .bind(&req.session_id)
         .bind(&answer.answer)
-        .bind(serde_json::to_value(&answer.sources).unwrap_or_else(|_| serde_json::json!([])))
+        .bind(stored_sources)
         .execute(&state.db)
         .await?;
 
@@ -102,6 +113,7 @@ async fn chat(
     Ok(Json(ChatResponse {
         answer: answer.answer,
         sources: answer.sources,
+        legal: answer.legal,
         remaining_guest_questions: (state.config.guest_question_limit - used).max(0),
         unlocked: session.has_access,
     }))
@@ -115,6 +127,7 @@ fn command_response(
     ChatResponse {
         answer: answer.to_owned(),
         sources: vec![],
+        legal: None,
         remaining_guest_questions: (limit - session.question_count).max(0),
         unlocked: session.has_access,
     }

@@ -41,6 +41,15 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
             {label}
           </Link>
         ))}
+        <button
+          className="rounded-md border border-ink/10 bg-white px-3 py-2 hover:border-brand/40"
+          onClick={() => {
+            localStorage.removeItem("admin-token");
+            location.assign("/admin");
+          }}
+        >
+          Logout
+        </button>
       </nav>
       <div className="mt-6">{children}</div>
     </section>
@@ -116,7 +125,6 @@ export function AdminKnowledgeSourcesPage() {
     },
   });
   const analyze = useMutation({ mutationFn: (id: string) => api.adminAnalyzeSource(t, id), onSuccess: () => qc.invalidateQueries() });
-  const index = useMutation({ mutationFn: (id: string) => api.adminIndexSource(t, id), onSuccess: () => qc.invalidateQueries() });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -135,6 +143,7 @@ export function AdminKnowledgeSourcesPage() {
           <Plus className="h-4 w-4" /> Add pasted text
         </button>
       </form>
+      <MutationError errors={[scan.error, create.error, analyze.error]} />
       <ListState loading={sources.isLoading} error={sources.error} empty={!sources.data?.length} />
       <div className="mt-4 grid gap-3">
         {sources.data?.map((source) => (
@@ -147,7 +156,6 @@ export function AdminKnowledgeSourcesPage() {
               </div>
               <div className="flex gap-2">
                 <ActionButton onClick={() => analyze.mutate(source.id)} disabled={analyze.isPending}><Play className="h-4 w-4" /> Analyze</ActionButton>
-                <ActionButton onClick={() => index.mutate(source.id)} disabled={index.isPending}><FileSearch className="h-4 w-4" /> Index</ActionButton>
               </div>
             </div>
           </div>
@@ -172,7 +180,15 @@ export function AdminKnowledgeCandidatesPage() {
         <option value="approved">approved</option>
         <option value="rejected">rejected</option>
       </select>
-      <CandidateList candidates={candidates.data} loading={candidates.isLoading} error={candidates.error} approve={approve.mutate} reject={reject.mutate} />
+      <MutationError errors={[approve.error, reject.error]} />
+      <CandidateList
+        candidates={candidates.data}
+        loading={candidates.isLoading}
+        error={candidates.error}
+        pending={approve.isPending || reject.isPending}
+        approve={approve.mutate}
+        reject={reject.mutate}
+      />
     </Guard>
   );
 }
@@ -194,10 +210,13 @@ export function AdminKnowledgeCandidateDetailPage() {
             <h2 className="mt-3 text-2xl font-semibold">{details.data.candidate.title_ru}</h2>
             <p className="mt-2 text-ink/65">{details.data.candidate.summary_ru}</p>
             <pre className="mt-5 whitespace-pre-wrap rounded-md bg-paper p-4 text-sm">{details.data.candidate.body_ru_markdown}</pre>
-            <div className="mt-4 flex gap-2">
-              <ActionButton onClick={() => approve.mutate()} disabled={approve.isPending}><Check className="h-4 w-4" /> Approve as draft</ActionButton>
-              <ActionButton onClick={() => reject.mutate()} disabled={reject.isPending}><X className="h-4 w-4" /> Reject</ActionButton>
-            </div>
+            {details.data.candidate.status === "draft" && (
+              <div className="mt-4 flex gap-2">
+                <ActionButton onClick={() => approve.mutate()} disabled={approve.isPending}><Check className="h-4 w-4" /> Approve as draft</ActionButton>
+                <ActionButton onClick={() => reject.mutate()} disabled={reject.isPending}><X className="h-4 w-4" /> Reject</ActionButton>
+              </div>
+            )}
+            <MutationError errors={[approve.error, reject.error]} />
           </article>
           <aside className="space-y-4">
             <div className="rounded-md border border-ink/10 bg-white p-4">
@@ -230,6 +249,7 @@ export function AdminAssistantPage() {
         <Metric label="Active policy" value={active?.active_policy_version_id ? "set" : "fallback"} />
         <Metric label="Pending candidates" value={candidates.data?.filter((candidate) => candidate.status === "draft").length ?? 0} />
       </div>
+      {(profiles.error || candidates.error) && <div className="mt-4"><ErrorState error={profiles.error ?? candidates.error} /></div>}
     </Guard>
   );
 }
@@ -255,6 +275,7 @@ export function AdminAssistantProfilesPage() {
         <input className="rounded-md border border-ink/15 px-3 py-2" value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="slug" />
         <button className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 font-medium text-white" disabled={!name || !slug || create.isPending}><Plus className="h-4 w-4" /> Create</button>
       </form>
+      <MutationError errors={[create.error]} />
       <ListState loading={profiles.isLoading} error={profiles.error} empty={!profiles.data?.length} />
       <div className="mt-4 grid gap-3">
         {profiles.data?.map((profile) => <ProfileCard key={profile.id} profile={profile} />)}
@@ -269,7 +290,7 @@ export function AdminAssistantCandidatesPage() {
   const [title, setTitle] = useState("");
   const profiles = useQuery({ queryKey: ["admin-assistant-profiles"], queryFn: () => api.adminAssistantProfiles(t) });
   const candidates = useQuery({ queryKey: ["admin-assistant-candidates"], queryFn: () => api.adminAssistantCandidates(t) });
-  const profileId = profiles.data?.[0]?.id ?? "";
+  const profileId = profiles.data?.find((profile) => profile.is_active)?.id ?? profiles.data?.[0]?.id ?? "";
   const create = useMutation({
     mutationFn: () =>
       api.adminCreateAssistantCandidate(t, {
@@ -292,6 +313,7 @@ export function AdminAssistantCandidatesPage() {
         <input className="min-w-64 flex-1 rounded-md border border-ink/15 px-3 py-2" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Architecture note" />
         <button className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 font-medium text-white" disabled={!profileId || !title || create.isPending}><Plus className="h-4 w-4" /> Create</button>
       </form>
+      <MutationError errors={[profiles.error, create.error, approve.error, reject.error]} />
       <div className="mt-4 grid gap-3">
         {candidates.data?.map((candidate) => (
           <div key={candidate.id} className="rounded-md border border-ink/10 bg-white p-4">
@@ -300,10 +322,12 @@ export function AdminAssistantCandidatesPage() {
                 <Link className="font-semibold text-brand" to={`/admin/assistant/candidates/${candidate.id}`}>{candidate.title}</Link>
                 <div className="mt-2 flex flex-wrap gap-2"><Badge>{candidate.candidate_type}</Badge><Badge>{candidate.status}</Badge><Badge>{candidate.risk_level}</Badge></div>
               </div>
-              <div className="flex gap-2">
-                <ActionButton onClick={() => approve.mutate(candidate.id)} disabled={approve.isPending}><Check className="h-4 w-4" /> Approve</ActionButton>
-                <ActionButton onClick={() => reject.mutate(candidate.id)} disabled={reject.isPending}><X className="h-4 w-4" /> Reject</ActionButton>
-              </div>
+              {candidate.status === "draft" && (
+                <div className="flex gap-2">
+                  <ActionButton onClick={() => approve.mutate(candidate.id)} disabled={approve.isPending}><Check className="h-4 w-4" /> Approve</ActionButton>
+                  <ActionButton onClick={() => reject.mutate(candidate.id)} disabled={reject.isPending}><X className="h-4 w-4" /> Reject</ActionButton>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -354,6 +378,7 @@ export function AdminAssistantNotesPage() {
         <textarea className="min-h-24 rounded-md border border-ink/15 px-3 py-2" value={body} onChange={(event) => setBody(event.target.value)} placeholder="Note" />
         <button className="inline-flex w-fit items-center gap-2 rounded-md bg-brand px-4 py-2 font-medium text-white" disabled={!title || create.isPending}><Plus className="h-4 w-4" /> Add note</button>
       </form>
+      <MutationError errors={[create.error, convert.error]} />
       <div className="mt-4 grid gap-3">
         {notes.data?.map((note) => (
           <div key={note.id} className="rounded-md border border-ink/10 bg-white p-4">
@@ -363,7 +388,9 @@ export function AdminAssistantNotesPage() {
                 <p className="mt-1 text-sm text-ink/65">{note.body}</p>
                 <div className="mt-2 flex flex-wrap gap-2"><Badge>{note.note_type}</Badge><Badge>{note.status}</Badge></div>
               </div>
-              <ActionButton onClick={() => convert.mutate(note.id)} disabled={convert.isPending}><Plus className="h-4 w-4" /> Convert</ActionButton>
+              {note.status !== "converted" && (
+                <ActionButton onClick={() => convert.mutate(note.id)} disabled={convert.isPending}><Plus className="h-4 w-4" /> Convert</ActionButton>
+              )}
             </div>
           </div>
         ))}
@@ -377,12 +404,14 @@ function CandidateList({
   candidates,
   loading,
   error,
+  pending,
   approve,
   reject,
 }: {
   candidates?: AdminKnowledgeCandidate[];
   loading: boolean;
   error: unknown;
+  pending: boolean;
   approve: (id: string) => void;
   reject: (id: string) => void;
 }) {
@@ -398,10 +427,12 @@ function CandidateList({
                 <p className="mt-1 text-sm text-ink/65">{candidate.summary_ru}</p>
                 <div className="mt-2 flex flex-wrap gap-2"><Badge>{candidate.status}</Badge><Badge>{candidate.risk_level}</Badge>{candidate.category_slug && <Badge>{candidate.category_slug}</Badge>}</div>
               </div>
-              <div className="flex gap-2">
-                <ActionButton onClick={() => approve(candidate.id)}><Check className="h-4 w-4" /> Approve</ActionButton>
-                <ActionButton onClick={() => reject(candidate.id)}><X className="h-4 w-4" /> Reject</ActionButton>
-              </div>
+              {candidate.status === "draft" && (
+                <div className="flex gap-2">
+                  <ActionButton onClick={() => approve(candidate.id)} disabled={pending}><Check className="h-4 w-4" /> Approve</ActionButton>
+                  <ActionButton onClick={() => reject(candidate.id)} disabled={pending}><X className="h-4 w-4" /> Reject</ActionButton>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -435,4 +466,9 @@ export function ListState({ loading, error, empty }: { loading: boolean; error: 
   if (error) return <div className="mt-4"><ErrorState error={error} /></div>;
   if (empty) return <div className="mt-4"><EmptyState label="No records" /></div>;
   return null;
+}
+
+function MutationError({ errors }: { errors: unknown[] }) {
+  const error = errors.find(Boolean);
+  return error ? <div className="mt-4"><ErrorState error={error} /></div> : null;
 }

@@ -1,5 +1,6 @@
 use crate::{
     error::AppResult,
+    legal::answer::{self as legal_answer, LegalMetadata, QuestionRoute},
     rag::{citations::SourceChunk, llm, prompts, qdrant_store},
     state::AppState,
     tool_adapters::assistant_brain_adapter,
@@ -12,6 +13,7 @@ pub type Citation = SourceChunk;
 pub struct AgentAnswer {
     pub answer: String,
     pub sources: Vec<Citation>,
+    pub legal: Option<LegalMetadata>,
 }
 
 pub async fn answer(
@@ -19,6 +21,18 @@ pub async fn answer(
     question: &str,
     page_context: Option<&str>,
 ) -> AppResult<AgentAnswer> {
+    if let QuestionRoute::Legal(route) = legal_answer::route_question(question) {
+        let legal = legal_answer::answer(&state.db, question, &route, |prompt| async move {
+            llm::complete(state, &prompt).await
+        })
+        .await?;
+        return Ok(AgentAnswer {
+            answer: legal.answer,
+            sources: vec![],
+            legal: Some(legal.metadata),
+        });
+    }
+
     qdrant_store::ensure_collection(state).await?;
     if qdrant_store::count_points(state)
         .await
@@ -28,6 +42,7 @@ pub async fn answer(
         return Ok(AgentAnswer {
             answer: "База документов пока не проиндексирована. Добавьте документы в ./docs и запустите индексацию.".to_owned(),
             sources: vec![],
+            legal: None,
         });
     }
 
@@ -81,6 +96,7 @@ pub async fn answer(
     Ok(AgentAnswer {
         answer,
         sources: relevant,
+        legal: None,
     })
 }
 
@@ -91,5 +107,6 @@ fn insufficient(sources: Vec<Citation>) -> AgentAnswer {
             prompts::INSUFFICIENT_RU
         ),
         sources,
+        legal: None,
     }
 }

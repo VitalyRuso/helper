@@ -170,6 +170,13 @@ pub struct KnowledgeItemView {
     pub legal_area: Option<String>,
     pub document_title: Option<String>,
     pub source_url: Option<String>,
+    pub authority: Option<String>,
+    pub official_id: Option<String>,
+    pub eli_id: Option<String>,
+    pub version_label: Option<String>,
+    pub version_date: Option<NaiveDate>,
+    pub retrieved_at: Option<DateTime<Utc>>,
+    pub last_checked_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

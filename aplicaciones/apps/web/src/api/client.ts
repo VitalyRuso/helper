@@ -21,8 +21,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
       ...init,
+      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch {
     throw new Error(DATA_LOAD_ERROR);
@@ -42,7 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   categories: () => request<Category[]>("/api/categories"),
-  articles: () => request<Article[]>("/api/articles"),
+  articles: (category?: string) =>
+    request<Article[]>(`/api/articles${category ? `?category=${encodeURIComponent(category)}` : ""}`),
   article: (slug: string) => request<Article>(`/api/articles/${slug}`),
   guides: () => request<Guide[]>("/api/guides"),
   guide: (slug: string) => request<Guide>(`/api/guides/${slug}`),
@@ -118,7 +119,11 @@ export const api = {
       qdrant_available: boolean;
       error: string | null;
     }>("/api/rag/status"),
-  reindex: () => request<{ files: number; chunks: number }>("/api/rag/reindex", { method: "POST" }),
+  reindex: (token: string) =>
+    request<{ files: number; chunks: number }>("/api/rag/reindex", {
+      method: "POST",
+      headers: auth(token),
+    }),
   adminKnowledgeSources: (token: string) =>
     request<AdminKnowledgeSource[]>("/api/admin/knowledge/sources", { headers: auth(token) }),
   adminCreateKnowledgeSource: (
@@ -144,11 +149,6 @@ export const api = {
     }),
   adminAnalyzeSource: (token: string, id: string) =>
     request<{ candidate: AdminKnowledgeCandidate }>(`/api/admin/knowledge/sources/${id}/analyze-now`, {
-      method: "POST",
-      headers: auth(token),
-    }),
-  adminIndexSource: (token: string, id: string) =>
-    request<{ queued: boolean }>(`/api/admin/knowledge/sources/${id}/index`, {
       method: "POST",
       headers: auth(token),
     }),

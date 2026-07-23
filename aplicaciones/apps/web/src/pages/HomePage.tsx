@@ -54,6 +54,7 @@ export function HomePage() {
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {guides.isLoading && <LoadingState />}
             {guides.error && <ErrorState error={guides.error} />}
+            {guides.data?.length === 0 && <EmptyState label="Гайды пока не добавлены." />}
             {guides.data?.slice(0, 6).map((guide) => <GuideCard key={guide.id} guide={guide} />)}
           </div>
         </div>

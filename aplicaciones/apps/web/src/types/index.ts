@@ -44,6 +44,33 @@ export type ChatResponse = {
   }>;
   remaining_guest_questions: number;
   unlocked: boolean;
+  legal?: {
+    language: string;
+    legal_area: string | null;
+    procedure_key: string | null;
+    reviewed: boolean;
+    reviewer_role: string;
+    currentness: {
+      status: string;
+      reviewed_version_is_current: boolean;
+      last_checked_at: string | null;
+    };
+    sources: Array<{
+      knowledge_item_id: string;
+      document_id: string | null;
+      document_title: string | null;
+      authority: string | null;
+      official_id: string | null;
+      eli_id: string | null;
+      source_url: string | null;
+      reviewed_version_id: string | null;
+      version_label: string | null;
+      version_date: string | null;
+      retrieved_at: string | null;
+      legal_status: string | null;
+    }>;
+    disclaimer: string;
+  } | null;
 };
 
 export type AdminKnowledgeSource = {

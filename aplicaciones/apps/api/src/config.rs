@@ -27,6 +27,7 @@ pub struct Config {
     pub admin_username: String,
     pub admin_password: String,
     pub log_level: String,
+    pub cors_origins: Vec<String>,
 }
 
 impl Config {
@@ -71,6 +72,15 @@ impl Config {
             admin_username: get("ADMIN_USERNAME", "admin"),
             admin_password: get("ADMIN_PASSWORD", "change-me"),
             log_level: get("LOG_LEVEL", "info"),
+            cors_origins: get(
+                "CORS_ORIGINS",
+                "http://localhost:3000,http://127.0.0.1:3000",
+            )
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
         })
     }
 }

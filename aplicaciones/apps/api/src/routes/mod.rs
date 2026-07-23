@@ -17,6 +17,7 @@ pub mod search;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(health::router())
         .nest("/api/admin/legal", admin_legal::router())
         .nest("/api/categories", categories::router())
         .nest("/api/articles", articles::router())
