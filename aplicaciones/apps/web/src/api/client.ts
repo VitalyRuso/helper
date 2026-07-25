@@ -10,8 +10,10 @@ import type {
   AdminLegalReviewTask,
   Article,
   Category,
-  ChatResponse,
   Guide,
+  LocalLlmJob,
+  LocalLlmStatus,
+  LocalLlmSubmitResponse,
 } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -51,11 +53,16 @@ export const api = {
     request<Array<{ kind: string; title_ru: string; slug: string; summary_ru: string }>>(
       `/api/search?q=${encodeURIComponent(q)}`,
     ),
-  chat: (message: string, session_id: string, page_context?: string) =>
-    request<ChatResponse>("/api/chat", {
+  localLlmStatus: () => request<LocalLlmStatus>("/api/local-llm/status"),
+  createLocalLlmJob: (message: string, session_id: string, page_context?: string) =>
+    request<LocalLlmSubmitResponse>("/api/local-llm/jobs", {
       method: "POST",
       body: JSON.stringify({ message, session_id, page_context }),
     }),
+  localLlmJob: (id: string, currentSessionId: string) =>
+    request<LocalLlmJob>(
+      `/api/local-llm/jobs/${encodeURIComponent(id)}?session_id=${encodeURIComponent(currentSessionId)}`,
+    ),
   unlock: (session_id: string, access_key: string) =>
     request<{ unlocked: boolean }>("/api/access/unlock", {
       method: "POST",

@@ -33,7 +33,11 @@ async fn main() -> anyhow::Result<()> {
         .allow_origin(AllowOrigin::list(origins))
         .allow_methods(Any)
         .allow_headers(Any);
-    let state = AppState::new(config.clone(), pool, Uuid::new_v4().to_string())?;
+    let admin_token = config
+        .admin_token
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let state = AppState::new(config.clone(), pool, admin_token)?;
     let app = Router::new()
         .merge(routes::router(state.clone()))
         .layer(cors)

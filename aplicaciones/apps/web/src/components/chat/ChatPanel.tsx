@@ -1,9 +1,21 @@
 import { Send } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { sessionId } from "../../lib/session";
 import type { ChatResponse } from "../../types";
+
+const JOB_POLL_MS = 2_000;
+const JOB_WAIT_MS = 18 * 60_000;
+
+function isLocalCommand(value: string) {
+  const command = value.trim();
+  return (
+    command === "/help" ||
+    command === "/status" ||
+    (command.startsWith("/key ") && Boolean(command.slice(5).trim()))
+  );
+}
 
 type Message = {
   role: "assistant" | "user";
@@ -20,8 +32,57 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
     },
   ]);
   const [text, setText] = useState("");
+  const statusQuery = useQuery({
+    queryKey: ["local-llm-status"],
+    queryFn: api.localLlmStatus,
+    refetchInterval: 5_000,
+    retry: false,
+  });
+  const localAiStatus = statusQuery.isError
+    ? "offline"
+    : (statusQuery.data?.status ?? "offline");
+  const localCommand = isLocalCommand(text);
+  const canSubmit =
+    Boolean(text.trim()) &&
+    (localAiStatus === "online" || localCommand);
+  const submitTitle =
+    localAiStatus === "online" || localCommand
+      ? "Отправить"
+      : localAiStatus === "busy"
+        ? "Локальная нейронка занята"
+        : "Локальная нейронка не подключена";
   const mutation = useMutation({
-    mutationFn: (message: string) => api.chat(message, sessionId(), location.pathname),
+    mutationFn: async (message: string) => {
+      const currentSessionId = sessionId();
+      const submitted = await api.createLocalLlmJob(
+        message,
+        currentSessionId,
+        location.pathname,
+      );
+      if (submitted.status === "completed" && submitted.response) {
+        return submitted.response;
+      }
+      if (!submitted.job_id) {
+        throw new Error("Не удалось создать запрос к локальной модели.");
+      }
+
+      const deadline = Date.now() + JOB_WAIT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, JOB_POLL_MS));
+        const job = await api.localLlmJob(submitted.job_id, currentSessionId);
+        if (job.status === "completed") {
+          if (job.response) return job.response;
+          throw new Error("Локальная модель вернула пустой ответ.");
+        }
+        if (job.status === "failed") {
+          throw new Error(job.error || "Локальная модель не смогла обработать запрос.");
+        }
+        if (job.status === "expired") {
+          throw new Error("Время обработки запроса истекло. Попробуйте ещё раз.");
+        }
+      }
+      throw new Error("Локальная модель не ответила вовремя. Попробуйте ещё раз.");
+    },
     onSuccess: (data) => {
       setMessages((items) => [...items, { role: "assistant", text: data.answer, sources: data.sources, legal: data.legal }]);
     },
@@ -33,7 +94,7 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
   function submit(event: FormEvent) {
     event.preventDefault();
     const message = text.trim();
-    if (!message || mutation.isPending) return;
+    if (!message || mutation.isPending || !canSubmit) return;
     setMessages((items) => [...items, { role: "user", text: message }]);
     setText("");
     mutation.mutate(message);
@@ -42,8 +103,29 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`flex ${compact ? "h-[520px]" : "min-h-[640px]"} flex-col rounded-md border border-ink/10 bg-white shadow-soft`}>
       <div className="border-b border-ink/10 p-4">
-        <div className="font-semibold">ИИ-помощник</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-semibold">ИИ-помощник</div>
+          <span
+            aria-live="polite"
+            className={`text-xs font-medium ${
+              localAiStatus === "online"
+                ? "text-emerald-700"
+                : localAiStatus === "busy"
+                  ? "text-saffron"
+                  : "text-ink/50"
+            }`}
+          >
+            {localAiStatus === "online"
+              ? "Local AI Online"
+              : localAiStatus === "busy"
+                ? "Local AI Busy"
+                : "Local AI Offline"}
+          </span>
+        </div>
         <div className="text-xs text-ink/60">Команды: /help, /status, /key ACCESS_KEY</div>
+        {localAiStatus === "offline" && (
+          <div className="mt-1 text-xs text-ink/60">Локальная нейронка не подключена</div>
+        )}
       </div>
       <div className="flex-1 space-y-3 overflow-auto p-4">
         {messages.map((message, index) => (
@@ -109,7 +191,12 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
           className="min-w-0 flex-1 rounded-md border border-ink/15 px-3 py-2 text-sm outline-none focus:border-brand"
           placeholder="Спросите о процедуре..."
         />
-        <button className="grid h-10 w-10 place-items-center rounded-md bg-brand text-white disabled:opacity-50" disabled={mutation.isPending} title="Отправить">
+        <button
+          className="grid h-10 w-10 place-items-center rounded-md bg-brand text-white disabled:opacity-50"
+          disabled={mutation.isPending || !canSubmit}
+          title={submitTitle}
+          aria-label={submitTitle}
+        >
           <Send className="h-4 w-4" />
         </button>
       </form>

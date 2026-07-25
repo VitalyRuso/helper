@@ -16,6 +16,8 @@ pub enum AppError {
     TooManyRequests(String),
     #[error("{0}")]
     Upstream(String),
+    #[error("{0}")]
+    ServiceUnavailable(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
@@ -36,6 +38,9 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()),
             AppError::TooManyRequests(message) => (StatusCode::TOO_MANY_REQUESTS, message.clone()),
             AppError::Upstream(message) => (StatusCode::BAD_GATEWAY, message.clone()),
+            AppError::ServiceUnavailable(message) => {
+                (StatusCode::SERVICE_UNAVAILABLE, message.clone())
+            }
             AppError::Sqlx(sqlx::Error::RowNotFound) => {
                 (StatusCode::NOT_FOUND, "resource not found".to_owned())
             }

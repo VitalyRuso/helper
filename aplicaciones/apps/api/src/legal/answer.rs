@@ -54,6 +54,15 @@ pub struct LegalAnswer {
     pub metadata: LegalMetadata,
 }
 
+#[derive(Debug, Clone)]
+pub enum PreparedLegalAnswer {
+    Immediate(LegalAnswer),
+    Generate {
+        prompt: String,
+        metadata: LegalMetadata,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LegalMetadata {
     pub language: String,
@@ -382,17 +391,35 @@ where
     F: FnOnce(String) -> Fut,
     Fut: Future<Output = AppResult<String>>,
 {
+    match prepare(pool, question, route).await? {
+        PreparedLegalAnswer::Immediate(answer) => Ok(answer),
+        PreparedLegalAnswer::Generate { prompt, metadata } => {
+            finish(generate(prompt).await?, metadata)
+        }
+    }
+}
+
+pub async fn prepare(
+    pool: &PgPool,
+    question: &str,
+    route: &LegalRoute,
+) -> AppResult<PreparedLegalAnswer> {
     // ponytail: the reviewed set is intentionally loaded in-process; add indexed multilingual
     // retrieval when approved knowledge volume makes this small deterministic scan inadequate.
     let approved = repository::list_approved_knowledge(pool).await?;
     let selected = select_relevant(approved, question, route);
     if selected.is_empty() {
-        return Ok(unavailable_answer(route.language));
+        return Ok(PreparedLegalAnswer::Immediate(unavailable_answer(
+            route.language,
+        )));
     }
 
     let metadata = metadata_for(route.language, &selected);
     let prompt = build_prompt(question, route.language, &selected);
-    let generated = generate(prompt).await?;
+    Ok(PreparedLegalAnswer::Generate { prompt, metadata })
+}
+
+pub fn finish(generated: String, metadata: LegalMetadata) -> AppResult<LegalAnswer> {
     if generated.trim().is_empty() {
         return Err(AppError::Upstream(
             "legal answer generation returned an empty response".to_owned(),
@@ -402,12 +429,20 @@ where
     let mut answer = generated.trim().to_owned();
     if metadata.currentness.last_checked_at.is_none() {
         answer.push_str("\n\n");
-        answer.push_str(unknown_check_note(route.language));
+        answer.push_str(unknown_check_note(language_from_code(&metadata.language)));
     }
     answer.push_str("\n\n");
     answer.push_str(&metadata.disclaimer);
 
     Ok(LegalAnswer { answer, metadata })
+}
+
+fn language_from_code(language: &str) -> AnswerLanguage {
+    match language {
+        "es" => AnswerLanguage::Es,
+        "en" => AnswerLanguage::En,
+        _ => AnswerLanguage::Ru,
+    }
 }
 
 fn select_relevant(
@@ -536,6 +571,10 @@ fn unavailable_answer(language: AnswerLanguage) -> LegalAnswer {
             disclaimer,
         },
     }
+}
+
+pub fn unavailable(language: &str) -> LegalAnswer {
+    unavailable_answer(language_from_code(language))
 }
 
 fn build_prompt(question: &str, language: AnswerLanguage, items: &[KnowledgeItemView]) -> String {

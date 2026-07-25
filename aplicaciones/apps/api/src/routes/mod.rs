@@ -12,12 +12,15 @@ pub mod chat;
 pub mod documents;
 pub mod guides;
 pub mod health;
+pub mod local_llm;
 pub mod rag;
 pub mod search;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::router())
+        .nest("/api/local-llm", local_llm::public_router())
+        .nest("/api/local-worker", local_llm::worker_router())
         .nest("/api/admin/legal", admin_legal::router())
         .nest("/api/categories", categories::router())
         .nest("/api/articles", articles::router())

@@ -1,13 +1,14 @@
 # Spain Helper AI
 
-Spain Helper AI is a Russian-first information portal for immigrants and newcomers in Spain. The MVP includes public guides and articles, search, an AI assistant, guest access limits, admin knowledge tools, and a reviewed Legal Core for Spanish immigration procedures.
+Spain Helper AI is a Russian-first information portal for immigrants and newcomers in Spain. The MVP includes public guides and articles, search, an AI assistant powered by an outbound local worker, guest access limits, admin knowledge tools, and a reviewed Legal Core for Spanish immigration procedures.
 
 The service provides general information, not legal advice. For important decisions, verify the official source or consult a qualified professional.
 
 ## What works
 
 - Public categories, articles, guides, detail pages, and search.
-- Chat with Ollama or the existing OpenAI provider boundary.
+- Cloud job queue for an outbound-only LM Studio worker.
+- Backend-owned Local AI Online/Busy/Offline status; chat submission is disabled while offline.
 - PostgreSQL-backed sessions, guest limits, access keys, and chat history.
 - Qdrant document indexing and RAG for non-legal questions.
 - Legal-question routing that never falls back to raw RAG.
@@ -24,12 +25,12 @@ The document analyzer page is intentionally disabled because safe upload analysi
 - `apps/api`: Rust, Axum, Tokio, SQLx.
 - PostgreSQL: content, sessions, admin workflows, Legal Core, and audit data.
 - Qdrant: vector search for the general RAG path.
-- Ollama by default, with the existing optional OpenAI chat boundary.
+- LM Studio on a private Windows computer, reached only by the local worker over loopback.
 - FastEmbed local embeddings by default.
 
 ## Run with Docker
 
-Requirements: Docker Desktop/Compose and, for generated chat answers, Ollama running on the host.
+Requirement: Docker Desktop/Compose. Public pages, search, admin tools, and Legal Core continue to work when the local model is offline.
 
 ```powershell
 Copy-Item .env.example .env
@@ -44,13 +45,6 @@ Open:
 - Qdrant: `http://localhost:6333`
 - Admin: `http://localhost:3000/admin`
 - Legal Review: `http://localhost:3000/admin/legal`
-
-Ollama runs outside this Compose stack:
-
-```powershell
-ollama pull llama3.1
-ollama serve
-```
 
 Stop the stack without deleting data volumes:
 
@@ -92,15 +86,58 @@ Required:
 Main runtime settings:
 
 - `API_HOST`, `API_PORT`, `APP_ENV`
-- `VITE_API_URL`, `WEB_PORT`
+- `VITE_API_URL`, `WEB_PORT`, `PUBLIC_HOST`
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `QDRANT_URL`, `QDRANT_COLLECTION`
 - `DOCS_DIR`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `TOP_K`
 - `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`
 - `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`
 - `OPENAI_API_KEY`, `OPENAI_MODEL` when `LLM_PROVIDER=openai`
 - `ACCESS_KEYS`, `GUEST_QUESTION_LIMIT`
-- `ADMIN_USERNAME`, `ADMIN_PASSWORD`
+- `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_TOKEN`
+- `LOCAL_WORKER_TOKEN`
 - `CORS_ORIGINS`, `LOG_LEVEL`
+
+## Local LM Studio worker
+
+LM Studio must listen only on `http://127.0.0.1:1234/v1` and have a real model loaded. The worker reads the model ID from `/v1/models`; it prefers a name matching `Qwen3.6-27B-GGUF`, or uses the only loaded model.
+
+The Google Cloud deploy script creates the ignored `aplicaciones/.env.worker` after verified HTTPS succeeds. For a local-only setup:
+
+```powershell
+Copy-Item .env.worker.example .env.worker
+```
+
+Fill in the cloud HTTPS URL, worker token, and worker ID. Then check connectivity and start:
+
+```powershell
+.\scripts\check-local-llm.ps1
+.\scripts\start-local-worker.ps1
+```
+
+All worker connections are outbound HTTPS. Port 1234 must never be forwarded or opened to the internet. A fresh heartbeat is required for Online status; stopping the worker, LM Studio, or the loaded model changes status to Offline within 45 seconds.
+
+For automatic per-user startup after Windows login, create the task only after the worker check succeeds:
+
+```powershell
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\scripts\start-local-worker.ps1`""
+$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+Register-ScheduledTask -TaskName "SpainHelperLocalWorker" `
+  -Action $Action -Trigger $Trigger -RunLevel Limited
+```
+
+The worker can start before LM Studio, but it reports Online only after LM Studio exposes a loaded model.
+
+## Google Cloud
+
+The minimal production deployment uses one Compute Engine VM, Docker Compose, and Caddy with automatic HTTPS:
+
+```powershell
+.\deploy\gcp\deploy.ps1
+```
+
+See [deploy/gcp/README.md](deploy/gcp/README.md) for resources, security boundaries, updates, rollback, and smoke checks.
 
 ## Index demo documents
 
@@ -156,9 +193,21 @@ docker compose logs --tail=200
 docker compose down
 ```
 
+The cloud overlay deliberately rejects empty production secrets. For config-only validation outside the VM, use temporary non-secret placeholders:
+
+```powershell
+$env:PUBLIC_HOST = "spain-helper-203-0-113-10.sslip.io"
+$env:POSTGRES_PASSWORD = "validation-only-db"
+$env:ACCESS_KEYS = "validation-only-access"
+$env:ADMIN_PASSWORD = "validation-only-admin"
+$env:ADMIN_TOKEN = "validation-only-admin-token"
+$env:LOCAL_WORKER_TOKEN = "validation-only-worker-token"
+docker compose -f docker-compose.yml -f docker-compose.cloud.yml config --quiet
+```
+
 ## Known limitations
 
-- Ollama is not bundled in Compose and must run separately for generated answers.
+- Generated answers require the home computer, worker, LM Studio, and a loaded model to be online.
 - FastEmbed downloads its model on first embedding use.
 - The demo document under `docs/` is not an official legal source.
 - Source-specific indexing jobs have no worker; use the reviewed Legal Core pipeline for legal material and admin RAG reindex for files under `docs/`.

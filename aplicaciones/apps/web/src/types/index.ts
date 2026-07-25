@@ -73,6 +73,30 @@ export type ChatResponse = {
   } | null;
 };
 
+export type LocalLlmStatus = {
+  status: "online" | "busy" | "offline";
+  model_id: string | null;
+  model_name: string | null;
+  last_heartbeat_at: string | null;
+};
+
+export type LocalLlmSubmitResponse = {
+  status: "completed" | "queued";
+  job_id: string | null;
+  response: ChatResponse | null;
+};
+
+export type LocalLlmJob = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "expired";
+  response: ChatResponse | null;
+  error: string | null;
+  model_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 export type AdminKnowledgeSource = {
   id: string;
   title: string;
