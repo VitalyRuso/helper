@@ -187,8 +187,15 @@ $SshArguments = @(
 )
 $SshReady = $false
 for ($Attempt = 1; $Attempt -le 18; $Attempt++) {
-    & $Gcloud @SshArguments --command=true 1>$null 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Gcloud @SshArguments --command=true 1>$null 2>$null
+        $SshExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($SshExitCode -eq 0) {
         $SshReady = $true
         break
     }
