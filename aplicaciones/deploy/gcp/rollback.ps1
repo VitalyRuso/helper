@@ -3,6 +3,7 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "remote-script.ps1")
 
 $ProjectNumber = "745947699440"
 $Zone = "europe-west1-b"
@@ -68,8 +69,9 @@ compose=(docker compose -f docker-compose.yml -f docker-compose.cloud.yml)
 printf '%s\n' "$current_revision" >"$revision_file"
 '@
 
-$RemoteScript | & $Gcloud compute ssh $VmName `
-    --zone=$Zone --tunnel-through-iap --quiet --command="sudo bash -s"
-if ($LASTEXITCODE -ne 0) {
+try {
+    Invoke-GcloudRemoteScript -Gcloud $Gcloud -VmName $VmName -Zone $Zone `
+        -Name "rollback" -Script $RemoteScript
+} catch {
     throw "Rollback failed. Database migrations are not automatically reversed."
 }

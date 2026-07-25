@@ -3,6 +3,7 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "remote-script.ps1")
 
 $ProjectNumber = "745947699440"
 $Region = "europe-west1"
@@ -308,8 +309,10 @@ compose=(docker compose -f docker-compose.yml -f docker-compose.cloud.yml)
 $RemoteScript = $RemoteTemplate.
     Replace("__REPOSITORY__", $Repository).
     Replace("__PUBLIC_HOST__", $PublicHost)
-$RemoteScript | & $Gcloud @SshArguments --command="sudo bash -s"
-if ($LASTEXITCODE -ne 0) {
+try {
+    Invoke-GcloudRemoteScript -Gcloud $Gcloud -VmName $VmName -Zone $Zone `
+        -Name "deploy" -Script $RemoteScript
+} catch {
     throw "Remote deployment failed. Infrastructure was left in place for diagnosis."
 }
 
@@ -332,9 +335,17 @@ if (-not $Healthy) {
     throw "HTTPS validation failed for $HealthUrl. TLS verification was not bypassed. Last error: $LastTlsError"
 }
 
-$WorkerTokenOutput = & $Gcloud @SshArguments `
-    --command="sudo sed -n 's/^LOCAL_WORKER_TOKEN=//p' /opt/spain-helper/aplicaciones/.env"
-if ($LASTEXITCODE -ne 0) {
+$WorkerTokenExitCode = 1
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $WorkerTokenOutput = & $Gcloud @SshArguments `
+        --command="sudo sed -n 's/^LOCAL_WORKER_TOKEN=//p' /opt/spain-helper/aplicaciones/.env"
+    $WorkerTokenExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+}
+if ($WorkerTokenExitCode -ne 0) {
     throw "Deployment is healthy, but LOCAL_WORKER_TOKEN could not be read through IAP SSH."
 }
 $WorkerToken = @($WorkerTokenOutput) |
