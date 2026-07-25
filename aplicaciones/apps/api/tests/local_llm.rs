@@ -508,6 +508,7 @@ fn test_config() -> Config {
         admin_password: "password".to_owned(),
         admin_token: Some("test-admin-token".to_owned()),
         local_worker_token: Some(WORKER_TOKEN.to_owned()),
+        legal_collector_token: None,
         log_level: "error".to_owned(),
         cors_origins: vec!["http://localhost".to_owned()],
     }

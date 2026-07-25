@@ -1,4 +1,5 @@
 pub mod answer;
+pub mod collector;
 pub mod diff;
 pub mod fixtures;
 pub mod models;

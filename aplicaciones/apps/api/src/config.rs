@@ -28,6 +28,7 @@ pub struct Config {
     pub admin_password: String,
     pub admin_token: Option<String>,
     pub local_worker_token: Option<String>,
+    pub legal_collector_token: Option<String>,
     pub log_level: String,
     pub cors_origins: Vec<String>,
 }
@@ -75,6 +76,7 @@ impl Config {
             admin_password: get("ADMIN_PASSWORD", "change-me"),
             admin_token: optional("ADMIN_TOKEN"),
             local_worker_token: optional("LOCAL_WORKER_TOKEN"),
+            legal_collector_token: optional("LEGAL_COLLECTOR_TOKEN"),
             log_level: get("LOG_LEVEL", "info"),
             cors_origins: get(
                 "CORS_ORIGINS",

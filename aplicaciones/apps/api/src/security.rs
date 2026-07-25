@@ -42,12 +42,7 @@ pub fn require_worker(headers: &HeaderMap, state: &AppState) -> Result<(), AppEr
     let Some(expected) = state.config.local_worker_token.as_deref() else {
         return Err(AppError::Unauthorized);
     };
-    let Some(token) = headers
-        .get("authorization")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .filter(|value| !value.is_empty())
-    else {
+    let Some(token) = bearer(headers) else {
         return Err(AppError::Unauthorized);
     };
 
@@ -58,7 +53,30 @@ pub fn require_worker(headers: &HeaderMap, state: &AppState) -> Result<(), AppEr
     }
 }
 
-fn constant_time_hash_eq(left: &str, right: &str) -> bool {
+pub fn require_legal_collector(headers: &HeaderMap, state: &AppState) -> Result<(), AppError> {
+    let Some(expected) = state.config.legal_collector_token.as_deref() else {
+        return Err(AppError::Unauthorized);
+    };
+    let Some(token) = bearer(headers) else {
+        return Err(AppError::Unauthorized);
+    };
+
+    if constant_time_hash_eq(token, expected) {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized)
+    }
+}
+
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+}
+
+pub fn constant_time_hash_eq(left: &str, right: &str) -> bool {
     let left = Sha256::digest(left.as_bytes());
     let right = Sha256::digest(right.as_bytes());
     left.iter()
