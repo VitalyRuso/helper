@@ -15,6 +15,7 @@ WORKDIR /app
 
 COPY --from=build /workspace/aplicaciones/apps/api/target/release/spain-helper-api /usr/local/bin/spain-helper-api
 COPY --from=build /workspace/aplicaciones/apps/api/target/release/index_docs /usr/local/bin/index_docs
+COPY --from=build /workspace/aplicaciones/apps/api/target/release/legal_collector /usr/local/bin/legal_collector
 
 EXPOSE 8000
 

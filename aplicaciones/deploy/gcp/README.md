@@ -96,3 +96,67 @@ Resolve-DnsName $HostName
 gcloud compute ssh spain-helper --zone=europe-west1-b --tunnel-through-iap `
   --command="cd /opt/spain-helper/aplicaciones && sudo docker compose -f docker-compose.yml -f docker-compose.cloud.yml logs --tail=200 caddy"
 ```
+
+## Legal Collector Job
+
+The collector is a bounded Cloud Run Job, not a public service. It uses a
+dedicated service account, `LEGAL_COLLECTOR_TOKEN` from Secret Manager, one
+task, parallelism 1, max retries 0, and a 900 second timeout. It does not
+create Scheduler and does not auto-approve AI conclusions.
+
+From Cloud Shell, after the tested commit is on `main`:
+
+```bash
+git clone https://github.com/VitalyRuso/helper.git
+cd helper
+PROJECT_ID=project-4d660d0c-8615-4485-834 \
+PUBLIC_HOST=spain-helper-34-38-50-7.sslip.io \
+bash aplicaciones/deploy/gcp/legal-collector-job.sh
+```
+
+Commands above change GCP: they enable APIs, create or update Artifact
+Registry, Secret Manager, IAM, Cloud Build image, and the Cloud Run Job. If the
+collector secret does not exist, the script generates it without printing it
+and appends it to the VM `.env` over IAP SSH.
+
+First smoke dry-run:
+
+```bash
+gcloud run jobs execute legal-collector --region europe-west1 --wait
+gcloud run jobs executions list --job legal-collector --region europe-west1 --limit 3
+```
+
+The dry-run command changes GCP only by creating a Job execution and logs. It
+does not write Legal Core rows because `LEGAL_COLLECTOR_DRY_RUN=true`.
+
+After the dry-run report is acceptable, run one real bounded smoke execution:
+
+```bash
+gcloud run jobs update legal-collector \
+  --region europe-west1 \
+  --update-env-vars LEGAL_COLLECTOR_DRY_RUN=false,MAX_DOCUMENTS_PER_RUN=5,MAX_MODEL_REQUESTS_PER_RUN=20,MAX_INPUT_TOKENS_PER_RUN=50000,MAX_OUTPUT_TOKENS_PER_RUN=12000,MAX_ESTIMATED_COST_USD=5,MAX_JOB_DURATION_SECONDS=900,MAX_RETRIES_PER_DOCUMENT=0
+
+gcloud run jobs execute legal-collector --region europe-west1 --wait
+```
+
+Both commands change GCP. The first changes the Job config; the second creates
+one execution. Do not add Scheduler until deduplication is verified.
+
+SQL verification report:
+
+```bash
+gcloud compute ssh spain-helper --zone=europe-west1-b --tunnel-through-iap \
+  --command="sudo sed -n 's/^LEGAL_COLLECTOR_TOKEN=//p' /opt/spain-helper/aplicaciones/.env | tr -d '\n' > /tmp/legal_collector_token && TOKEN=\$(cat /tmp/legal_collector_token) && curl -fsS -H \"Authorization: Bearer \$TOKEN\" https://spain-helper-34-38-50-7.sslip.io/api/legal-collector/report && rm -f /tmp/legal_collector_token"
+```
+
+The SQL report returns persisted counts for sources, documents, versions,
+sections, legal changes, and pending review tasks. `unchanged` and `failed` are
+run-level counters in the Cloud Run execution JSON report; they are not stored
+in PostgreSQL because there is no run-history table.
+
+Stop future executions by leaving Scheduler absent. Delete command, documented
+only:
+
+```bash
+gcloud run jobs delete legal-collector --region europe-west1
+```

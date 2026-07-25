@@ -32,6 +32,10 @@ pub struct CollectorSource {
     pub source_key: Option<String>,
     pub title: String,
     pub authority: String,
+    pub registry_id: Option<String>,
+    pub jurisdiction: Option<String>,
+    pub trust_level: Option<String>,
+    pub ingestion_mode: Option<String>,
     pub terms_or_reuse_notes: Option<String>,
 }
 
@@ -85,6 +89,47 @@ pub struct CollectorIntakeResponse {
     pub version_id: Option<Uuid>,
     pub review_task_id: Option<Uuid>,
     pub content_hash: String,
+    pub versions_created: u32,
+    pub sections_created: u32,
+    pub review_tasks_created: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CollectorSqlReport {
+    pub source_count: i64,
+    pub document_count: i64,
+    pub version_count: i64,
+    pub section_count: i64,
+    pub legal_change_count: i64,
+    pub pending_review_task_count: i64,
+    pub unchanged_count: i64,
+    pub failed_count: i64,
+}
+
+pub async fn sql_report(pool: &PgPool) -> AppResult<CollectorSqlReport> {
+    let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64)>(
+        r#"
+        SELECT
+          (SELECT count(*) FROM legal_sources),
+          (SELECT count(*) FROM legal_documents),
+          (SELECT count(*) FROM document_versions),
+          (SELECT count(*) FROM document_sections),
+          (SELECT count(*) FROM legal_changes),
+          (SELECT count(*) FROM review_tasks WHERE status = 'pending')
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(CollectorSqlReport {
+        source_count: row.0,
+        document_count: row.1,
+        version_count: row.2,
+        section_count: row.3,
+        legal_change_count: row.4,
+        pending_review_task_count: row.5,
+        unchanged_count: 0,
+        failed_count: 0,
+    })
 }
 
 pub async fn ingest(
@@ -109,6 +154,9 @@ pub async fn ingest(
                 version_id: Some(current.id),
                 review_task_id: None,
                 content_hash: prepared.content_hash,
+                versions_created: 0,
+                sections_created: 0,
+                review_tasks_created: 0,
             });
         }
     }
@@ -197,6 +245,9 @@ pub async fn ingest(
         version_id: Some(version.id),
         review_task_id: Some(review_task.id),
         content_hash: prepared.content_hash,
+        versions_created: 1,
+        sections_created: prepared.sections.len() as u32,
+        review_tasks_created: 1,
     })
 }
 
@@ -204,7 +255,10 @@ struct PreparedIntake {
     source_key: String,
     source_title: String,
     source_authority: String,
+    source_jurisdiction: String,
     source_type: String,
+    source_trust_level: String,
+    ingestion_mode: String,
     base_url: String,
     terms_or_reuse_notes: String,
     official_id: Option<String>,
@@ -235,15 +289,54 @@ impl PreparedIntake {
     fn new(request: CollectorIntakeRequest) -> AppResult<Self> {
         let url = official_url(&request.document.source_url)?;
         let host = url.host_str().unwrap_or_default();
-        let source_type = match host {
-            "boe.es" | "www.boe.es" => "boe",
-            "inclusion.gob.es" => "migraciones",
-            _ => {
-                return Err(AppError::BadRequest(
-                    "source_url domain is not allowed".to_owned(),
-                ))
-            }
+        let registry = trusted_source(host)
+            .ok_or_else(|| AppError::BadRequest("source_url domain is not allowed".to_owned()))?;
+        if !registry.enabled {
+            return Err(AppError::BadRequest(
+                "source registry entry is disabled".to_owned(),
+            ));
+        }
+        let registry_id = request.source.registry_id.as_deref().unwrap_or(registry.id);
+        if registry_id != registry.id {
+            return Err(AppError::BadRequest(
+                "source.registry_id does not match source_url domain".to_owned(),
+            ));
+        }
+        let source_type = match registry.id {
+            "boe" => "boe",
+            "inclusion" => "migraciones",
+            "eur_lex" => "eurlex",
+            "poder_judicial" | "curia" => "cendoj",
+            _ => "manual",
         };
+        let source_jurisdiction = request
+            .source
+            .jurisdiction
+            .as_deref()
+            .map(|value| bounded_key(value, "source.jurisdiction", 40))
+            .transpose()?
+            .unwrap_or_else(|| registry.jurisdiction.to_owned());
+        let source_trust_level = match request.source.trust_level.as_deref() {
+            Some(value) => enum_value(
+                value,
+                "source.trust_level",
+                &[
+                    "official",
+                    "official_secondary",
+                    "court",
+                    "manual_import",
+                    "unknown",
+                ],
+            )?,
+            None => registry.trust_level.to_owned(),
+        };
+        let ingestion_mode = request
+            .source
+            .ingestion_mode
+            .as_deref()
+            .map(|value| bounded_key(value, "source.ingestion_mode", 80))
+            .transpose()?
+            .unwrap_or_else(|| registry.ingestion_mode.to_owned());
         let source_key = match request.source.source_key {
             Some(value) => bounded_key(&value, "source.source_key", 120)?,
             None => format!("collector-{source_type}-{}", short_hash(url.as_str())),
@@ -315,7 +408,10 @@ impl PreparedIntake {
             source_key,
             source_title: bounded_text(&request.source.title, "source.title", 300)?,
             source_authority: bounded_text(&request.source.authority, "source.authority", 200)?,
+            source_jurisdiction,
             source_type: source_type.to_owned(),
+            source_trust_level,
+            ingestion_mode,
             base_url: format!("https://{host}"),
             terms_or_reuse_notes: request
                 .source
@@ -391,11 +487,14 @@ async fn upsert_source(
           source_key, title, authority, jurisdiction, source_type, base_url,
           acquisition_method, trust_level, language, terms_or_reuse_notes, parser_version
         )
-        VALUES ($1, $2, $3, 'ES', $4, $5, 'cloud_collector', 'official', 'es', $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'es', $9, $10)
         ON CONFLICT (source_key) DO UPDATE SET
           title = EXCLUDED.title,
           authority = EXCLUDED.authority,
+          jurisdiction = EXCLUDED.jurisdiction,
           base_url = EXCLUDED.base_url,
+          acquisition_method = EXCLUDED.acquisition_method,
+          trust_level = EXCLUDED.trust_level,
           terms_or_reuse_notes = EXCLUDED.terms_or_reuse_notes,
           parser_version = EXCLUDED.parser_version,
           updated_at = now()
@@ -408,8 +507,11 @@ async fn upsert_source(
     .bind(&intake.source_key)
     .bind(&intake.source_title)
     .bind(&intake.source_authority)
+    .bind(&intake.source_jurisdiction)
     .bind(&intake.source_type)
     .bind(&intake.base_url)
+    .bind(&intake.ingestion_mode)
+    .bind(&intake.source_trust_level)
     .bind(&intake.terms_or_reuse_notes)
     .bind(PARSER_VERSION)
     .fetch_one(&mut **tx)
@@ -734,12 +836,83 @@ fn official_url(value: &str) -> AppResult<Url> {
             "document.source_url must use HTTPS".to_owned(),
         ));
     }
-    match url.host_str() {
-        Some("boe.es" | "www.boe.es" | "inclusion.gob.es") => Ok(url),
+    match url.host_str().and_then(trusted_source) {
+        Some(source) if source.enabled => Ok(url),
         _ => Err(AppError::BadRequest(
             "document.source_url domain is not allowed".to_owned(),
         )),
     }
+}
+
+struct TrustedSource {
+    id: &'static str,
+    jurisdiction: &'static str,
+    trust_level: &'static str,
+    ingestion_mode: &'static str,
+    enabled: bool,
+}
+
+fn trusted_source(host: &str) -> Option<TrustedSource> {
+    let source = match host {
+        "boe.es" | "www.boe.es" => TrustedSource {
+            id: "boe",
+            jurisdiction: "ES",
+            trust_level: "official",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "administracion.gob.es" | "www.administracion.gob.es" => TrustedSource {
+            id: "administracion",
+            jurisdiction: "ES",
+            trust_level: "official_secondary",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "inclusion.gob.es" | "www.inclusion.gob.es" => TrustedSource {
+            id: "inclusion",
+            jurisdiction: "ES",
+            trust_level: "official_secondary",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "interior.gob.es" | "www.interior.gob.es" => TrustedSource {
+            id: "interior",
+            jurisdiction: "ES",
+            trust_level: "official_secondary",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "exteriores.gob.es" | "www.exteriores.gob.es" => TrustedSource {
+            id: "exteriores",
+            jurisdiction: "ES",
+            trust_level: "official_secondary",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "poderjudicial.es" | "www.poderjudicial.es" => TrustedSource {
+            id: "poder_judicial",
+            jurisdiction: "ES",
+            trust_level: "court",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "eur-lex.europa.eu" => TrustedSource {
+            id: "eur_lex",
+            jurisdiction: "EU",
+            trust_level: "official",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        "curia.europa.eu" => TrustedSource {
+            id: "curia",
+            jurisdiction: "EU",
+            trust_level: "court",
+            ingestion_mode: "html_text",
+            enabled: true,
+        },
+        _ => return None,
+    };
+    Some(source)
 }
 
 fn enum_value(value: &str, field: &str, allowed: &[&str]) -> AppResult<String> {
