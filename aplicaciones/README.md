@@ -120,8 +120,10 @@ All worker connections are outbound HTTPS. Port 1234 must never be forwarded or 
 For automatic per-user startup after Windows login, create the task only after the worker check succeeds:
 
 ```powershell
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\scripts\start-local-worker.ps1`""
+cargo build --release --manifest-path apps/api/Cargo.toml --bin local_worker
+$AppRoot = (Resolve-Path .).Path
+$WorkerExe = (Resolve-Path apps/api/target/release/local_worker.exe).Path
+$Action = New-ScheduledTaskAction -Execute $WorkerExe -WorkingDirectory $AppRoot
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 Register-ScheduledTask -TaskName "SpainHelperLocalWorker" `
   -Action $Action -Trigger $Trigger -RunLevel Limited
