@@ -99,8 +99,8 @@ $WebRule = "spain-helper-allow-web"
 if (Test-GcloudResource @("compute", "firewall-rules", "describe", $WebRule)) {
     Invoke-Gcloud @(
         "compute", "firewall-rules", "update", $WebRule,
-        "--direction=INGRESS", "--action=ALLOW", "--rules=tcp:80,tcp:443",
-        "--source-ranges=0.0.0.0/0", "--target-tags=spain-helper-web"
+        "--rules=tcp:80,tcp:443", "--source-ranges=0.0.0.0/0",
+        "--target-tags=spain-helper-web"
     )
 } else {
     Invoke-Gcloud @(
@@ -115,8 +115,8 @@ $SshRule = "spain-helper-allow-iap-ssh"
 if (Test-GcloudResource @("compute", "firewall-rules", "describe", $SshRule)) {
     Invoke-Gcloud @(
         "compute", "firewall-rules", "update", $SshRule,
-        "--direction=INGRESS", "--action=ALLOW", "--rules=tcp:22",
-        "--source-ranges=35.235.240.0/20", "--target-tags=spain-helper-iap"
+        "--rules=tcp:22", "--source-ranges=35.235.240.0/20",
+        "--target-tags=spain-helper-iap"
     )
 } else {
     Invoke-Gcloud @(
