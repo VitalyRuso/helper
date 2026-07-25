@@ -130,12 +130,7 @@ async fn seed_categories(pool: &PgPool) -> Result<()> {
             r#"
             INSERT INTO categories (title_ru, slug, description_ru, icon, sort_order)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (slug) DO UPDATE SET
-              title_ru = EXCLUDED.title_ru,
-              description_ru = EXCLUDED.description_ru,
-              icon = EXCLUDED.icon,
-              sort_order = EXCLUDED.sort_order,
-              updated_at = now()
+            ON CONFLICT (slug) DO NOTHING
             "#,
         )
         .bind(title)

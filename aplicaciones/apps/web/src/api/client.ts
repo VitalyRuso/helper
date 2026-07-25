@@ -5,10 +5,15 @@ import type {
   AdminKnowledgeCandidate,
   AdminKnowledgeCandidateDetails,
   AdminKnowledgeSource,
+  AdminLegalKnowledgeItem,
+  AdminLegalReviewContext,
+  AdminLegalReviewTask,
   Article,
   Category,
-  ChatResponse,
   Guide,
+  LocalLlmJob,
+  LocalLlmStatus,
+  LocalLlmSubmitResponse,
 } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -18,8 +23,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
       ...init,
+      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch {
     throw new Error(DATA_LOAD_ERROR);
@@ -39,7 +44,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   categories: () => request<Category[]>("/api/categories"),
-  articles: () => request<Article[]>("/api/articles"),
+  articles: (category?: string) =>
+    request<Article[]>(`/api/articles${category ? `?category=${encodeURIComponent(category)}` : ""}`),
   article: (slug: string) => request<Article>(`/api/articles/${slug}`),
   guides: () => request<Guide[]>("/api/guides"),
   guide: (slug: string) => request<Guide>(`/api/guides/${slug}`),
@@ -47,11 +53,16 @@ export const api = {
     request<Array<{ kind: string; title_ru: string; slug: string; summary_ru: string }>>(
       `/api/search?q=${encodeURIComponent(q)}`,
     ),
-  chat: (message: string, session_id: string, page_context?: string) =>
-    request<ChatResponse>("/api/chat", {
+  localLlmStatus: () => request<LocalLlmStatus>("/api/local-llm/status"),
+  createLocalLlmJob: (message: string, session_id: string, page_context?: string) =>
+    request<LocalLlmSubmitResponse>("/api/local-llm/jobs", {
       method: "POST",
       body: JSON.stringify({ message, session_id, page_context }),
     }),
+  localLlmJob: (id: string, currentSessionId: string) =>
+    request<LocalLlmJob>(
+      `/api/local-llm/jobs/${encodeURIComponent(id)}?session_id=${encodeURIComponent(currentSessionId)}`,
+    ),
   unlock: (session_id: string, access_key: string) =>
     request<{ unlocked: boolean }>("/api/access/unlock", {
       method: "POST",
@@ -69,6 +80,41 @@ export const api = {
     }>("/api/admin/stats", {
       headers: { authorization: `Bearer ${token}` },
     }),
+  adminLegalReviewTasks: (token: string) =>
+    request<{ items: AdminLegalReviewTask[] }>("/api/admin/legal/review-tasks", {
+      headers: auth(token),
+    }),
+  adminLegalReviewTask: (token: string, id: string) =>
+    request<AdminLegalReviewContext>(`/api/admin/legal/review-tasks/${id}`, {
+      headers: auth(token),
+    }),
+  adminLegalKnowledge: (token: string) =>
+    request<{ items: AdminLegalKnowledgeItem[] }>("/api/admin/legal/knowledge", {
+      headers: auth(token),
+    }),
+  adminLegalApproveTask: (token: string, id: string, note: string) =>
+    request<{ task: AdminLegalReviewTask; knowledge_item: unknown }>(
+      `/api/admin/legal/review-tasks/${id}/approve`,
+      {
+        method: "POST",
+        headers: auth(token),
+        body: JSON.stringify({ reviewer: "dev", note }),
+      },
+    ),
+  adminLegalRejectTask: (token: string, id: string, note: string) =>
+    request<{ task: AdminLegalReviewTask; knowledge_item: null }>(
+      `/api/admin/legal/review-tasks/${id}/reject`,
+      {
+        method: "POST",
+        headers: auth(token),
+        body: JSON.stringify({ reviewer: "dev", note }),
+      },
+    ),
+  adminLegalRunFixture: (token: string) =>
+    request<{ result: { review_task: AdminLegalReviewTask } }>("/api/admin/legal/fixtures/run", {
+      method: "POST",
+      headers: auth(token),
+    }),
   ragStatus: () =>
     request<{
       collection: string;
@@ -80,7 +126,11 @@ export const api = {
       qdrant_available: boolean;
       error: string | null;
     }>("/api/rag/status"),
-  reindex: () => request<{ files: number; chunks: number }>("/api/rag/reindex", { method: "POST" }),
+  reindex: (token: string) =>
+    request<{ files: number; chunks: number }>("/api/rag/reindex", {
+      method: "POST",
+      headers: auth(token),
+    }),
   adminKnowledgeSources: (token: string) =>
     request<AdminKnowledgeSource[]>("/api/admin/knowledge/sources", { headers: auth(token) }),
   adminCreateKnowledgeSource: (
@@ -106,11 +156,6 @@ export const api = {
     }),
   adminAnalyzeSource: (token: string, id: string) =>
     request<{ candidate: AdminKnowledgeCandidate }>(`/api/admin/knowledge/sources/${id}/analyze-now`, {
-      method: "POST",
-      headers: auth(token),
-    }),
-  adminIndexSource: (token: string, id: string) =>
-    request<{ queued: boolean }>(`/api/admin/knowledge/sources/${id}/index`, {
       method: "POST",
       headers: auth(token),
     }),

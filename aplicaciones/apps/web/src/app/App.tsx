@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "../components/layout/AppLayout";
 import { AboutPage } from "../pages/AboutPage";
 import { AdminPage } from "../pages/AdminPage";
@@ -20,6 +20,7 @@ import { GuideDetailPage } from "../pages/GuideDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { KbPage } from "../pages/KbPage";
 import { LegalPage } from "../pages/LegalPage";
+import { LegalReviewPage } from "../pages/LegalReviewPage";
 import { PricingPage } from "../pages/PricingPage";
 import { SearchPage } from "../pages/SearchPage";
 import { ArticlePage } from "../pages/ArticlePage";
@@ -40,6 +41,7 @@ export function App() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/legal" element={<LegalPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/legal" element={<LegalReviewPage />} />
         <Route path="/admin/knowledge" element={<AdminKnowledgePage />} />
         <Route path="/admin/knowledge/sources" element={<AdminKnowledgeSourcesPage />} />
         <Route path="/admin/knowledge/candidates" element={<AdminKnowledgeCandidatesPage />} />
@@ -49,6 +51,7 @@ export function App() {
         <Route path="/admin/assistant/candidates" element={<AdminAssistantCandidatesPage />} />
         <Route path="/admin/assistant/candidates/:id" element={<AdminAssistantCandidateDetailPage />} />
         <Route path="/admin/assistant/notes" element={<AdminAssistantNotesPage />} />
+        <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </AppLayout>
   );

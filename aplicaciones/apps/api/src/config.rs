@@ -26,7 +26,10 @@ pub struct Config {
     pub guest_question_limit: i32,
     pub admin_username: String,
     pub admin_password: String,
+    pub admin_token: Option<String>,
+    pub local_worker_token: Option<String>,
     pub log_level: String,
+    pub cors_origins: Vec<String>,
 }
 
 impl Config {
@@ -70,11 +73,26 @@ impl Config {
                 .context("GUEST_QUESTION_LIMIT must be a number")?,
             admin_username: get("ADMIN_USERNAME", "admin"),
             admin_password: get("ADMIN_PASSWORD", "change-me"),
+            admin_token: optional("ADMIN_TOKEN"),
+            local_worker_token: optional("LOCAL_WORKER_TOKEN"),
             log_level: get("LOG_LEVEL", "info"),
+            cors_origins: get(
+                "CORS_ORIGINS",
+                "http://localhost:3000,http://127.0.0.1:3000",
+            )
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
         })
     }
 }
 
 fn get(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+fn optional(key: &str) -> Option<String> {
+    env::var(key).ok().filter(|value| !value.trim().is_empty())
 }

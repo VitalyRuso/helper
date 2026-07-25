@@ -1,27 +1,41 @@
 # Spain Helper AI
 
-Russian-first web platform for immigrants, expats, and newcomers in Spain. The MVP is a normal web portal with guides, knowledge base, search, an integrated AI assistant, guest limits, access-key unlock, PostgreSQL, Qdrant, Ollama, and Docker.
+Spain Helper AI is a Russian-first information portal for immigrants and newcomers in Spain. The MVP includes public guides and articles, search, an AI assistant powered by an outbound local worker, guest access limits, admin knowledge tools, and a reviewed Legal Core for Spanish immigration procedures.
 
-This is not legal advice. The assistant is an informational tool, not a lawyer, gestor, immigration officer, or public authority. For risky or final decisions, check the official source or a licensed professional.
+The service provides general information, not legal advice. For important decisions, verify the official source or consult a qualified professional.
 
-## Architecture
+## What works
 
-- `apps/web`: Vite, React, TypeScript, Tailwind, TanStack Query, reusable chat widget, admin shell.
-- `apps/api`: Rust, Axum, Tokio, SQLx, PostgreSQL, Qdrant HTTP API, Ollama/OpenAI chat provider boundary.
-- `docs`: local official documents to index.
-- `postgres`: app data, sessions, access keys, content, chat logs, document metadata.
-- `qdrant`: vectors for local RAG.
-- `ollama`: default local LLM provider, expected on host at `http://localhost:11434`.
+- Public categories, articles, guides, detail pages, and search.
+- Cloud job queue for an outbound-only LM Studio worker.
+- Backend-owned Local AI Online/Busy/Offline status; chat submission is disabled while offline.
+- PostgreSQL-backed sessions, guest limits, access keys, and chat history.
+- Qdrant document indexing and RAG for non-legal questions.
+- Legal-question routing that never falls back to raw RAG.
+- Legal answers based only on approved knowledge with a current reviewed document lineage.
+- Explicit refusal when matching reviewed/current legal material is unavailable.
+- Admin login, statistics, RAG status/reindex, knowledge intake, assistant configuration candidates, and Legal Review.
+- Development fixture for demonstrating Legal Review approval/rejection.
 
-Embeddings stay local. The default provider is `fastembed` with `intfloat/multilingual-e5-small`. It downloads the ONNX model on first indexing/query use and then runs local inference from cache. `local-hashing-v1` remains only as an explicit development fallback via `EMBEDDING_PROVIDER=local-hashing`.
+The document analyzer page is intentionally disabled because safe upload analysis is not implemented.
 
-## Run Locally
+## Stack
 
-```bash
-cp .env.example .env
-make db
-make api
-make web
+- `apps/web`: React, TypeScript, Vite, Tailwind, TanStack Query.
+- `apps/api`: Rust, Axum, Tokio, SQLx.
+- PostgreSQL: content, sessions, admin workflows, Legal Core, and audit data.
+- Qdrant: vector search for the general RAG path.
+- LM Studio on a private Windows computer, reached only by the local worker over loopback.
+- FastEmbed local embeddings by default.
+
+## Run with Docker
+
+Requirement: Docker Desktop/Compose. Public pages, search, admin tools, and Legal Core continue to work when the local model is offline.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build --wait
+docker compose ps
 ```
 
 Open:
@@ -29,137 +43,173 @@ Open:
 - Web: `http://localhost:3000`
 - API health: `http://localhost:8000/health`
 - Qdrant: `http://localhost:6333`
+- Admin: `http://localhost:3000/admin`
+- Legal Review: `http://localhost:3000/admin/legal`
 
-Run Ollama separately:
+Stop the stack without deleting data volumes:
 
-```bash
-ollama pull llama3.1
-ollama serve
-```
-
-## Index Documents
-
-Put `.pdf`, `.txt`, `.md`, or `.html` files in `docs/`, then run:
-
-```bash
-make index
-```
-
-or call:
-
-```bash
-curl -X POST http://localhost:8000/api/rag/reindex
-```
-
-If Qdrant is empty, the assistant refuses to fake an answer and asks you to index documents first.
-
-## Chat And Access Keys
-
-Guests get 3 answered AI questions per `session_id`. After that, the API returns:
-
-```text
-Бесплатный лимит закончился. Введите ключ доступа или оформите подписку.
-```
-
-Unlock in chat:
-
-```text
-/key demo123
-```
-
-Valid keys come from `ACCESS_KEYS` in `.env`; the database stores only hashes.
-
-Commands:
-
-- `/help`
-- `/status`
-- `/key ACCESS_KEY`
-
-## Admin
-
-Admin login uses:
-
-- `ADMIN_USERNAME`
-- `ADMIN_PASSWORD`
-
-The current admin UI has login, stats, RAG status, and reindex. Content CRUD endpoints exist under:
-
-- `POST /api/admin/categories`
-- `PUT /api/admin/categories/:id`
-- `DELETE /api/admin/categories/:id`
-- `POST /api/admin/articles`
-- `PUT /api/admin/articles/:id`
-- `DELETE /api/admin/articles/:id`
-- `POST /api/admin/guides`
-- `PUT /api/admin/guides/:id`
-- `DELETE /api/admin/guides/:id`
-
-The API seeds base categories and safe generic guides on startup.
-
-## Docker
-
-```bash
-cp .env.example .env
-make docker-up
-```
-
-Services:
-
-- `web`: `3000`
-- `api`: `8000`
-- `postgres`: `5432`
-- `qdrant`: `6333`
-
-`./docs` is mounted into the API container. If Ollama runs on the host, Docker uses `http://host.docker.internal:11434`.
-
-FastEmbed vector dimensions depend on `EMBEDDING_MODEL`. If you change the model after indexing, reset the Qdrant collection or volume and re-run indexing:
-
-```bash
+```powershell
 docker compose down
-docker volume rm files-mentioned-by-the-user-you_qdrant_data
-docker compose up -d postgres qdrant api
-make index
 ```
 
-## API Surface
+## Run services separately
 
-- `GET /health`
-- `GET /api/categories`
-- `GET /api/categories/:slug`
-- `GET /api/articles`
-- `GET /api/articles/:slug`
-- `GET /api/articles?category=...`
-- `GET /api/guides`
-- `GET /api/guides/:slug`
-- `GET /api/search?q=...`
-- `POST /api/chat`
-- `POST /api/access/unlock`
-- `GET /api/rag/status`
-- `POST /api/rag/reindex`
-- `POST /api/admin/login`
-- `GET /api/admin/stats`
-- `POST /api/documents/analyze` returns `501` until implemented.
+Start PostgreSQL and Qdrant:
 
-## Future Browser Extension
+```powershell
+docker compose up -d postgres qdrant
+```
 
-Add `apps/browser-extension` later as a Chrome Manifest V3 extension that calls the same backend:
+Start the API:
 
-- side panel assistant
-- current page DOM summary
-- Russian explanations of Spanish government pages
-- suggested actions with user confirmation
-- no automatic form submission
+```powershell
+cd apps/api
+cargo run
+```
 
-The MVP intentionally does not ship broken extension code.
+Start the web app in another terminal:
 
-## Future Document Analyzer
+```powershell
+cd apps/web
+npm.cmd install
+npm.cmd run dev -- --host 0.0.0.0
+```
 
-The frontend has `/document-analyzer`; the backend boundary is `POST /api/documents/analyze`. Fill that endpoint with upload handling, file extraction, RAG-backed analysis, and explicit user consent before storing documents.
+## Environment
 
-## Known Limitations
+Copy `.env.example` to `.env`. The file contains development-only defaults; change database, access-key, and admin credentials outside local development.
 
-- The MVP does not include a full visual CMS yet.
-- `fastembed` downloads model files on first use, so the first indexing run needs network access.
-- `local-hashing-v1` is deterministic local vector retrieval, not semantic-quality model embeddings, and is not the default.
-- RAG quality depends on indexed official documents in `docs/`.
-- OpenAI is optional for chat only; embeddings remain local.
+Required:
+
+- `DATABASE_URL`
+
+Main runtime settings:
+
+- `API_HOST`, `API_PORT`, `APP_ENV`
+- `VITE_API_URL`, `WEB_PORT`, `PUBLIC_HOST`
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `QDRANT_URL`, `QDRANT_COLLECTION`
+- `DOCS_DIR`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, `TOP_K`
+- `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`
+- `LLM_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`
+- `OPENAI_API_KEY`, `OPENAI_MODEL` when `LLM_PROVIDER=openai`
+- `ACCESS_KEYS`, `GUEST_QUESTION_LIMIT`
+- `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_TOKEN`
+- `LOCAL_WORKER_TOKEN`
+- `CORS_ORIGINS`, `LOG_LEVEL`
+
+## Local LM Studio worker
+
+LM Studio must listen only on `http://127.0.0.1:1234/v1` and have a real model loaded. The worker reads the model ID from `/v1/models`; it prefers a name matching `Qwen3.6-27B-GGUF`, or uses the only loaded model.
+
+The Google Cloud deploy script creates the ignored `aplicaciones/.env.worker` after verified HTTPS succeeds. For a local-only setup:
+
+```powershell
+Copy-Item .env.worker.example .env.worker
+```
+
+Fill in the cloud HTTPS URL, worker token, and worker ID. Then check connectivity and start:
+
+```powershell
+.\scripts\check-local-llm.ps1
+.\scripts\start-local-worker.ps1
+```
+
+All worker connections are outbound HTTPS. Port 1234 must never be forwarded or opened to the internet. A fresh heartbeat is required for Online status; stopping the worker, LM Studio, or the loaded model changes status to Offline within 45 seconds.
+
+For automatic per-user startup after Windows login, create the task only after the worker check succeeds:
+
+```powershell
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\scripts\start-local-worker.ps1`""
+$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+Register-ScheduledTask -TaskName "SpainHelperLocalWorker" `
+  -Action $Action -Trigger $Trigger -RunLevel Limited
+```
+
+The worker can start before LM Studio, but it reports Online only after LM Studio exposes a loaded model.
+
+## Google Cloud
+
+The minimal production deployment uses one Compute Engine VM, Docker Compose, and Caddy with automatic HTTPS:
+
+```powershell
+.\deploy\gcp\deploy.ps1
+```
+
+See [deploy/gcp/README.md](deploy/gcp/README.md) for resources, security boundaries, updates, rollback, and smoke checks.
+
+## Index demo documents
+
+Files in `docs/` are indexing inputs; they are not automatically trusted or official legal sources.
+
+With the API environment configured:
+
+```powershell
+cd apps/api
+cargo run --bin index_docs
+```
+
+The same general RAG reindex operation is available after admin login. It requires the admin bearer token and is not a public endpoint.
+
+## Legal Review demo
+
+1. Log in at `/admin`.
+2. Open `/admin/legal`.
+3. Use **Run fixture** in development.
+4. Open the pending task and approve or reject it with a reviewer note.
+5. Approved material appears under **Approved Knowledge**.
+6. A matching public legal question uses only that approved/current material and shows Legal Reviewer, source, version, and currentness metadata.
+
+Pending, rejected, stale, future-effective, disabled-source, or otherwise unreviewed legal material is excluded. If no matching safe item exists, chat returns a localized refusal instead of using raw Qdrant chunks.
+
+## Verify
+
+Backend:
+
+```powershell
+cd apps/api
+cargo fmt --check
+cargo check
+cargo test
+```
+
+Frontend:
+
+```powershell
+cd apps/web
+npm.cmd run build
+```
+
+Compose and smoke checks:
+
+```powershell
+docker compose config
+docker compose up --build --wait
+docker compose ps
+Invoke-RestMethod http://localhost:8000/health
+Invoke-RestMethod http://localhost:8000/api/categories
+docker compose logs --tail=200
+docker compose down
+```
+
+The cloud overlay deliberately rejects empty production secrets. For config-only validation outside the VM, use temporary non-secret placeholders:
+
+```powershell
+$env:PUBLIC_HOST = "spain-helper-203-0-113-10.sslip.io"
+$env:POSTGRES_PASSWORD = "validation-only-db"
+$env:ACCESS_KEYS = "validation-only-access"
+$env:ADMIN_PASSWORD = "validation-only-admin"
+$env:ADMIN_TOKEN = "validation-only-admin-token"
+$env:LOCAL_WORKER_TOKEN = "validation-only-worker-token"
+docker compose -f docker-compose.yml -f docker-compose.cloud.yml config --quiet
+```
+
+## Known limitations
+
+- Generated answers require the home computer, worker, LM Studio, and a loaded model to be online.
+- FastEmbed downloads its model on first embedding use.
+- The demo document under `docs/` is not an official legal source.
+- Source-specific indexing jobs have no worker; use the reviewed Legal Core pipeline for legal material and admin RAG reindex for files under `docs/`.
+- No document upload analyzer, payment system, browser extension, or live BOE/Migraciones/EUR-Lex monitoring is included.
+- Admin authentication is suitable for a local/demo MVP, not a production multi-user control plane.

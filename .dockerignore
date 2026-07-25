@@ -2,5 +2,7 @@
 **/node_modules
 **/dist
 **/.git
+**/.env
+**/.env.*
 aplicaciones/outputs
 aplicaciones/work

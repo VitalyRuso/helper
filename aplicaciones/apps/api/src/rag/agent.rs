@@ -1,5 +1,6 @@
 use crate::{
     error::AppResult,
+    legal::answer::{self as legal_answer, LegalMetadata, PreparedLegalAnswer, QuestionRoute},
     rag::{citations::SourceChunk, llm, prompts, qdrant_store},
     state::AppState,
     tool_adapters::assistant_brain_adapter,
@@ -12,6 +13,20 @@ pub type Citation = SourceChunk;
 pub struct AgentAnswer {
     pub answer: String,
     pub sources: Vec<Citation>,
+    pub legal: Option<LegalMetadata>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GenerationPlan {
+    pub prompt: String,
+    pub sources: Vec<Citation>,
+    pub legal: Option<LegalMetadata>,
+}
+
+#[derive(Debug)]
+pub enum PreparedAnswer {
+    Immediate(AgentAnswer),
+    Generate(GenerationPlan),
 }
 
 pub async fn answer(
@@ -19,21 +34,53 @@ pub async fn answer(
     question: &str,
     page_context: Option<&str>,
 ) -> AppResult<AgentAnswer> {
+    match prepare(state, question, page_context).await? {
+        PreparedAnswer::Immediate(answer) => Ok(answer),
+        PreparedAnswer::Generate(plan) => {
+            let generated = llm::complete(state, &plan.prompt).await?;
+            finish(plan, generated)
+        }
+    }
+}
+
+pub async fn prepare(
+    state: &AppState,
+    question: &str,
+    page_context: Option<&str>,
+) -> AppResult<PreparedAnswer> {
+    if let QuestionRoute::Legal(route) = legal_answer::route_question(question) {
+        return match legal_answer::prepare(&state.db, question, &route).await? {
+            PreparedLegalAnswer::Immediate(legal) => Ok(PreparedAnswer::Immediate(AgentAnswer {
+                answer: legal.answer,
+                sources: vec![],
+                legal: Some(legal.metadata),
+            })),
+            PreparedLegalAnswer::Generate { prompt, metadata } => {
+                Ok(PreparedAnswer::Generate(GenerationPlan {
+                    prompt,
+                    sources: vec![],
+                    legal: Some(metadata),
+                }))
+            }
+        };
+    }
+
     qdrant_store::ensure_collection(state).await?;
     if qdrant_store::count_points(state)
         .await
         .map_err(|error| crate::error::AppError::Upstream(error.to_string()))?
         == 0
     {
-        return Ok(AgentAnswer {
+        return Ok(PreparedAnswer::Immediate(AgentAnswer {
             answer: "База документов пока не проиндексирована. Добавьте документы в ./docs и запустите индексацию.".to_owned(),
             sources: vec![],
-        });
+            legal: None,
+        }));
     }
 
     let chunks = qdrant_store::search(state, question).await?;
     if chunks.is_empty() {
-        return Ok(insufficient(vec![]));
+        return Ok(PreparedAnswer::Immediate(insufficient(vec![])));
     }
 
     let relevant: Vec<_> = chunks
@@ -41,7 +88,7 @@ pub async fn answer(
         .filter(|chunk| chunk.score > 0.05)
         .collect();
     if relevant.is_empty() {
-        return Ok(insufficient(vec![]));
+        return Ok(PreparedAnswer::Immediate(insufficient(vec![])));
     }
 
     let context = relevant
@@ -77,11 +124,28 @@ pub async fn answer(
         page_context.unwrap_or(""),
         question
     );
-    let answer = llm::complete(state, &prompt).await?;
-    Ok(AgentAnswer {
-        answer,
+    Ok(PreparedAnswer::Generate(GenerationPlan {
+        prompt,
         sources: relevant,
-    })
+        legal: None,
+    }))
+}
+
+pub fn finish(plan: GenerationPlan, generated: String) -> AppResult<AgentAnswer> {
+    if let Some(metadata) = plan.legal {
+        let legal = legal_answer::finish(generated, metadata)?;
+        Ok(AgentAnswer {
+            answer: legal.answer,
+            sources: vec![],
+            legal: Some(legal.metadata),
+        })
+    } else {
+        Ok(AgentAnswer {
+            answer: generated,
+            sources: plan.sources,
+            legal: None,
+        })
+    }
 }
 
 fn insufficient(sources: Vec<Citation>) -> AgentAnswer {
@@ -91,5 +155,6 @@ fn insufficient(sources: Vec<Citation>) -> AgentAnswer {
             prompts::INSUFFICIENT_RU
         ),
         sources,
+        legal: None,
     }
 }

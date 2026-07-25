@@ -1,28 +1,21 @@
-use crate::{
-    error::{AppError, AppResult},
-    rag::agent,
-    services::{access_key_service, session_service},
-    state::AppState,
-};
 use axum::{extract::State, routing::post, Json, Router};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use uuid::Uuid;
 
-const LIMIT_MESSAGE: &str =
-    "Бесплатный лимит закончился. Введите ключ доступа или оформите подписку.";
+use crate::{
+    error::AppResult, local_llm::ChatResponse, services::session_service, state::AppState,
+};
 
-#[derive(Deserialize)]
-pub struct ChatRequest {
-    pub message: String,
-    pub session_id: String,
-    pub page_context: Option<String>,
-}
+use super::local_llm::{CreateJobRequest, SubmitResponse};
 
 #[derive(Serialize)]
-pub struct ChatResponse {
-    pub answer: String,
-    pub sources: Vec<agent::Citation>,
-    pub remaining_guest_questions: i32,
-    pub unlocked: bool,
+struct CompatibleChatResponse {
+    #[serde(flatten)]
+    response: ChatResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    job_id: Option<Uuid>,
 }
 
 pub fn router() -> Router<AppState> {
@@ -31,91 +24,37 @@ pub fn router() -> Router<AppState> {
 
 async fn chat(
     State(state): State<AppState>,
-    Json(req): Json<ChatRequest>,
-) -> AppResult<Json<ChatResponse>> {
-    let message = req.message.trim();
-    if message.is_empty() {
-        return Err(AppError::BadRequest("message is required".to_owned()));
-    }
+    Json(request): Json<CreateJobRequest>,
+) -> AppResult<Json<CompatibleChatResponse>> {
+    let session_id = request.session_id.clone();
+    let (_, Json(submitted)) =
+        super::local_llm::submit(State(state.clone()), Json(request)).await?;
 
-    let session = session_service::get_or_create(&state.db, &req.session_id).await?;
-
-    if message == "/help" {
-        return Ok(Json(command_response(
-            "Команды: /help, /status, /key ACCESS_KEY. Задавайте вопросы по документам после индексации базы.",
-            &session,
-            state.config.guest_question_limit,
-        )));
-    }
-
-    if message == "/status" {
-        return Ok(Json(command_response(
-            &format!(
-                "Использовано вопросов: {}. Доступ: {}.",
-                session.question_count,
-                if session.has_access {
-                    "открыт"
-                } else {
-                    "гостевой"
-                }
-            ),
-            &session,
-            state.config.guest_question_limit,
-        )));
-    }
-
-    if let Some(key) = message.strip_prefix("/key ") {
-        if access_key_service::is_valid(&state.db, key.trim()).await? {
-            session_service::unlock(&state.db, &req.session_id).await?;
-            return Ok(Json(ChatResponse {
-                answer: "Ключ принят. Доступ открыт.".to_owned(),
-                sources: vec![],
-                remaining_guest_questions: state.config.guest_question_limit,
-                unlocked: true,
-            }));
+    Ok(Json(match submitted {
+        SubmitResponse {
+            response: Some(response),
+            ..
+        } => CompatibleChatResponse {
+            response,
+            status: None,
+            job_id: None,
+        },
+        SubmitResponse { status, job_id, .. } => {
+            let session = session_service::get_or_create(&state.db, session_id.trim()).await?;
+            CompatibleChatResponse {
+                response: ChatResponse {
+                    answer: "Запрос поставлен в очередь и будет обработан локальной моделью."
+                        .to_owned(),
+                    sources: vec![],
+                    legal: None,
+                    remaining_guest_questions: (state.config.guest_question_limit
+                        - session.question_count)
+                        .max(0),
+                    unlocked: session.has_access,
+                },
+                status: Some(status),
+                job_id,
+            }
         }
-        return Err(AppError::BadRequest(
-            "Ключ доступа не найден или отключен.".to_owned(),
-        ));
-    }
-
-    if !session.has_access && session.question_count >= state.config.guest_question_limit {
-        return Err(AppError::TooManyRequests(LIMIT_MESSAGE.to_owned()));
-    }
-
-    let answer = agent::answer(&state, message, req.page_context.as_deref()).await?;
-    session_service::increment_questions(&state.db, &req.session_id).await?;
-
-    sqlx::query("INSERT INTO chat_messages (session_id, role, content, sources) VALUES ($1, 'user', $2, '[]')")
-        .bind(&req.session_id)
-        .bind(message)
-        .execute(&state.db)
-        .await?;
-    sqlx::query("INSERT INTO chat_messages (session_id, role, content, sources) VALUES ($1, 'assistant', $2, $3)")
-        .bind(&req.session_id)
-        .bind(&answer.answer)
-        .bind(serde_json::to_value(&answer.sources).unwrap_or_else(|_| serde_json::json!([])))
-        .execute(&state.db)
-        .await?;
-
-    let used = session.question_count + 1;
-    Ok(Json(ChatResponse {
-        answer: answer.answer,
-        sources: answer.sources,
-        remaining_guest_questions: (state.config.guest_question_limit - used).max(0),
-        unlocked: session.has_access,
     }))
-}
-
-fn command_response(
-    answer: &str,
-    session: &session_service::SessionUsage,
-    limit: i32,
-) -> ChatResponse {
-    ChatResponse {
-        answer: answer.to_owned(),
-        sources: vec![],
-        remaining_guest_questions: (limit - session.question_count).max(0),
-        unlocked: session.has_access,
-    }
 }

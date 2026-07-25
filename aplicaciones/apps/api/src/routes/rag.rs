@@ -5,6 +5,7 @@ use crate::{
 };
 use axum::{
     extract::State,
+    http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
@@ -45,6 +46,10 @@ async fn status(State(state): State<AppState>) -> AppResult<Json<RagStatus>> {
     }))
 }
 
-async fn reindex(State(state): State<AppState>) -> AppResult<Json<indexer::IndexReport>> {
+async fn reindex(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<indexer::IndexReport>> {
+    crate::security::require_admin(&headers, &state)?;
     Ok(Json(indexer::reindex(&state).await?))
 }

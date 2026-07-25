@@ -18,6 +18,7 @@ The project is built around one core rule:
 - Provides public guides, categories and search
 - Includes an administrative legal-review workflow
 - Supports controlled RAG reindexing
+- Runs generation through a secure outbound LM Studio worker
 - Runs locally through Docker Compose
 
 ## Legal Core workflow
@@ -97,12 +98,15 @@ Administrative operations are protected with a bearer token.
 - vector search
 - local embeddings
 - RAG
-- optional local LLM through Ollama
+- PostgreSQL local-LLM job queue
+- LM Studio on a private Windows computer
 
 ### Infrastructure
 
 - Docker
 - Docker Compose
+- Google Compute Engine
+- Caddy automatic HTTPS
 
 ## Architecture
 
@@ -121,8 +125,14 @@ Rust / Axum API
         │   ├── embeddings
         │   └── vector retrieval
         │
-        └── Optional local LLM
-            └── answer generation
+        └── PostgreSQL job queue
+                    ▲
+                    │ outbound HTTPS polling
+                    │
+            Local Windows worker
+                    │ loopback only
+                    ▼
+             LM Studio :1234
 ```
 
 ## Repository structure
@@ -135,6 +145,9 @@ helper/
     │   ├── api/          # Rust backend
     │   └── web/          # React frontend
     ├── docker-compose.yml
+    ├── docker-compose.cloud.yml
+    ├── deploy/gcp/       # Compute Engine deployment scripts
+    ├── scripts/          # Local worker scripts
     ├── .env.example
     └── README.md         # Detailed technical documentation
 ```
@@ -200,6 +213,15 @@ docker compose down
 
 Docker volumes are preserved.
 
+## Local model and cloud deployment
+
+The public site and API can run continuously in Google Cloud while LM Studio
+stays private on the home computer. The local worker initiates every connection
+through outbound HTTPS; port `1234` is never published or forwarded.
+
+- [Application and local worker](aplicaciones/README.md)
+- [Google Cloud deployment](aplicaciones/deploy/gcp/README.md)
+
 ## Development
 
 ### Backend
@@ -238,6 +260,9 @@ The backend test suite covers:
 - rejection of unverified knowledge
 - safe refusal behavior
 - legal review authorization
+- worker authentication and heartbeat freshness
+- atomic job claims and lease recovery
+- completion-time Legal Core currentness revalidation
 - tool adapters
 
 Run:
@@ -261,23 +286,27 @@ The current MVP includes:
 - citations and currentness metadata;
 - legal review workflow;
 - protected administrative actions;
+- outbound LM Studio worker and cloud job queue;
+- backend-owned Online/Busy/Offline status;
+- Compute Engine and Caddy deployment configuration;
 - Docker Compose environment;
 - integration tests.
 
 ## Current limitations
 
-This is a local and portfolio-oriented MVP.
+This is a small single-VM MVP.
 
 It does not currently provide:
 
 - automatic live monitoring of BOE or Migraciones;
 - production user accounts;
 - payments;
-- cloud production deployment;
 - complete coverage of Spanish law;
 - guaranteed real-time legal updates.
 
-Ollama is optional, but required for real local LLM generation.
+Generated answers require the home computer, local worker, LM Studio and a
+loaded model to be online. Public pages, search and Legal Core browsing remain
+available while the worker is offline.
 
 ## Disclaimer
 

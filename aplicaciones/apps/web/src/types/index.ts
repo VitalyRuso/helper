@@ -44,6 +44,57 @@ export type ChatResponse = {
   }>;
   remaining_guest_questions: number;
   unlocked: boolean;
+  legal?: {
+    language: string;
+    legal_area: string | null;
+    procedure_key: string | null;
+    reviewed: boolean;
+    reviewer_role: string;
+    currentness: {
+      status: string;
+      reviewed_version_is_current: boolean;
+      last_checked_at: string | null;
+    };
+    sources: Array<{
+      knowledge_item_id: string;
+      document_id: string | null;
+      document_title: string | null;
+      authority: string | null;
+      official_id: string | null;
+      eli_id: string | null;
+      source_url: string | null;
+      reviewed_version_id: string | null;
+      version_label: string | null;
+      version_date: string | null;
+      retrieved_at: string | null;
+      legal_status: string | null;
+    }>;
+    disclaimer: string;
+  } | null;
+};
+
+export type LocalLlmStatus = {
+  status: "online" | "busy" | "offline";
+  model_id: string | null;
+  model_name: string | null;
+  last_heartbeat_at: string | null;
+};
+
+export type LocalLlmSubmitResponse = {
+  status: "completed" | "queued";
+  job_id: string | null;
+  response: ChatResponse | null;
+};
+
+export type LocalLlmJob = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "expired";
+  response: ChatResponse | null;
+  error: string | null;
+  model_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 };
 
 export type AdminKnowledgeSource = {
@@ -91,6 +142,75 @@ export type AdminKnowledgeCandidateDetails = {
   candidate: AdminKnowledgeCandidate;
   source: AdminKnowledgeSource | null;
   facts: AdminKnowledgeFact[];
+};
+
+export type AdminLegalReviewTask = {
+  id: string;
+  legal_change_id: string | null;
+  document_id: string | null;
+  title: string;
+  status: string;
+  priority: string;
+  ai_summary: string;
+};
+
+export type AdminLegalReviewContext = {
+  task: AdminLegalReviewTask | null;
+  legal_change: {
+    id: string;
+    change_type: string;
+    priority: string;
+    affected_sections: unknown;
+    detected_summary: string;
+    status: string;
+  };
+  document: {
+    id: string;
+    official_id: string | null;
+    eli_id: string | null;
+    title: string;
+    document_type: string;
+    legal_area: string;
+    procedure_key: string | null;
+    source_url: string | null;
+    status: string;
+  };
+  diff: {
+    id: string;
+    diff_type: string;
+    summary: string;
+    diff_json: unknown;
+  };
+  affected_sections: Array<{
+    id: string;
+    version_id: string;
+    stable_section_key: string;
+    section_number: string | null;
+    title: string;
+    text_content: string;
+  }>;
+  currentness: {
+    reviewed_version_id: string;
+    current_version_id: string | null;
+    reviewed_version_is_current: boolean;
+    is_stale: boolean;
+  };
+};
+
+export type AdminLegalKnowledgeItem = {
+  id: string;
+  procedure_key: string;
+  topic_key: string;
+  title_es: string;
+  canonical_answer_es: string;
+  status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  document_id: string | null;
+  document_title: string | null;
+  legal_status: string | null;
+  reviewed_version_is_current: boolean;
+  is_stale: boolean;
 };
 
 export type AdminAssistantProfile = {

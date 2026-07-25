@@ -1,6 +1,8 @@
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod legal;
+pub mod local_llm;
 pub mod rag;
 pub mod routes;
 pub mod security;

@@ -7,6 +7,10 @@ edition = "2021"
 name = "index_docs"
 path = "src/bin/index_docs.rs"
 
+[[bin]]
+name = "local_worker"
+path = "src/bin/local_worker.rs"
+
 [dependencies]
 anyhow = "1"
 axum = { version = "0.7", features = ["macros"] }

@@ -8,12 +8,15 @@ pub fn hash_key(key: &str) -> String {
 }
 
 pub async fn seed_access_key_hashes(pool: &PgPool, keys: &[String]) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE access_keys SET is_active = false WHERE label = 'env'")
+        .execute(pool)
+        .await?;
     for key in keys {
         sqlx::query(
             r#"
             INSERT INTO access_keys (key_hash, label)
             VALUES ($1, 'env')
-            ON CONFLICT (key_hash) DO NOTHING
+            ON CONFLICT (key_hash) DO UPDATE SET is_active = true, label = 'env'
             "#,
         )
         .bind(hash_key(key))
@@ -32,5 +35,50 @@ pub fn require_admin(headers: &HeaderMap, state: &AppState) -> Result<(), AppErr
         Ok(())
     } else {
         Err(AppError::Unauthorized)
+    }
+}
+
+pub fn require_worker(headers: &HeaderMap, state: &AppState) -> Result<(), AppError> {
+    let Some(expected) = state.config.local_worker_token.as_deref() else {
+        return Err(AppError::Unauthorized);
+    };
+    let Some(token) = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(AppError::Unauthorized);
+    };
+
+    if constant_time_hash_eq(token, expected) {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized)
+    }
+}
+
+fn constant_time_hash_eq(left: &str, right: &str) -> bool {
+    let left = Sha256::digest(left.as_bytes());
+    let right = Sha256::digest(right.as_bytes());
+    left.iter()
+        .zip(right.iter())
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_hash_eq;
+
+    #[test]
+    fn hashed_token_comparison_matches_only_equal_values() {
+        assert!(constant_time_hash_eq("worker-secret", "worker-secret"));
+        assert!(!constant_time_hash_eq(
+            "worker-secret",
+            "worker-secret-wrong"
+        ));
     }
 }
