@@ -44,8 +44,14 @@ function Invoke-Gcloud([string[]]$Arguments) {
 }
 
 function Test-GcloudResource([string[]]$Arguments) {
-    & $Gcloud @Arguments 1>$null 2>$null
-    return $LASTEXITCODE -eq 0
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Gcloud @Arguments 1>$null 2>$null
+        return $LASTEXITCODE -eq 0
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
 }
 
 $ActiveAccounts = & $Gcloud auth list --filter=status:ACTIVE "--format=value(account)"
