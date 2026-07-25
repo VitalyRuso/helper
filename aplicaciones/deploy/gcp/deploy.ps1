@@ -48,9 +48,10 @@ function Test-GcloudResource([string[]]$Arguments) {
     return $LASTEXITCODE -eq 0
 }
 
-$ActiveAccount = & $Gcloud auth list --filter=status:ACTIVE "--format=value(account)" |
-    Select-Object -First 1
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ActiveAccount)) {
+$ActiveAccounts = & $Gcloud auth list --filter=status:ACTIVE "--format=value(account)"
+$AuthExitCode = $LASTEXITCODE
+$ActiveAccount = $ActiveAccounts | Select-Object -First 1
+if ($AuthExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($ActiveAccount)) {
     throw "No active Google Cloud account. Run 'gcloud auth login'."
 }
 
